@@ -44,10 +44,21 @@ let preprocess_exn ~input_file ~output_file =
   run_gcc_exn [ "-E"; "-P"; input_file; "-o"; output_file ]
 ;;
 
-let compile_exn ~stop_after ~input_file:_ ~assembly_file =
-  match (stop_after : Stop_after.t) with
-  | Lex | Parse | Codegen -> ()
-  | Emit | Link -> Out_channel.with_file assembly_file ~f:(fun _ -> ())
+let compile_exn ~stop_after ~input_file ~assembly_file =
+  let rec lex_to_end lexbuf =
+    match Lex.next lexbuf with
+    | Eof -> ()
+    | token ->
+      print_s [%sexp (token : Lex.Token.t)];
+      lex_to_end lexbuf
+  in
+  In_channel.with_file input_file ~f:(fun ic ->
+    let lexbuf = Lexing.from_channel ic in
+    Lexing.set_filename lexbuf input_file;
+    lex_to_end lexbuf;
+    match (stop_after : Stop_after.t) with
+    | Lex | Parse | Codegen -> ()
+    | Emit | Link -> Out_channel.with_file assembly_file ~f:(fun _ -> ()))
 ;;
 
 let assemble_and_link_exn ~assembly_file ~output_file =
