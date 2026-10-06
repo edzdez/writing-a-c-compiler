@@ -1,37 +1,42 @@
 open! Core
 
-module Expr = struct
-  module Node = struct
-    type t = Const of int [@@deriving sexp_of]
-  end
+module Unary_op = struct
+  type t = node Util.With_location.t
 
-  type t = Node.t Util.With_location.t [@@deriving sexp_of]
+  and node =
+    | Complement
+    | Negate
+  [@@deriving sexp_of]
+end
+
+module Expr = struct
+  type t = node Util.With_location.t
+
+  and node =
+    | Const of int
+    | Unary of
+        { op : Unary_op.t
+        ; expr : t
+        }
+  [@@deriving sexp_of]
 end
 
 module Stmt = struct
-  module Node = struct
-    type t = Return of Expr.t [@@deriving sexp_of]
-  end
-
-  type t = Node.t Util.With_location.t [@@deriving sexp_of]
+  type t = node Util.With_location.t
+  and node = Return of Expr.t [@@deriving sexp_of]
 end
 
 module Fun_def = struct
-  module Node = struct
-    type t =
-      { name : string
-      ; body : Stmt.t
-      }
-    [@@deriving sexp_of]
-  end
+  type t = node Util.With_location.t
 
-  type t = Node.t Util.With_location.t [@@deriving sexp_of]
+  and node =
+    { name : string
+    ; body : Stmt.t
+    }
+  [@@deriving sexp_of]
 end
 
 module Prog = struct
-  module Node = struct
-    type t = Fun_def.t [@@deriving sexp_of]
-  end
-
-  type t = Node.t Util.With_location.t [@@deriving sexp_of]
+  type t = node Util.With_location.t
+  and node = Fun_def.t [@@deriving sexp_of]
 end

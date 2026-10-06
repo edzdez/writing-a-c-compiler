@@ -47,11 +47,14 @@ let command =
     ~summary:"Compile a C source file."
     (let%map_open.Command lex = flag "--lex" no_arg ~doc:" stop after lexing."
      and parse = flag "--parse" no_arg ~doc:" stop after parsing."
+     and tacky = flag "--tacky" no_arg ~doc:" stop after tacky generation."
      and codegen = flag "--codegen" no_arg ~doc:" stop after assembly generation."
      and emit = flag "-S" no_arg ~doc:" emit assembly, but do not assemble or link."
      and source_file = anon ("SOURCE_FILE" %: Filename_unix.arg_type) in
      fun () ->
-       let%bind.Or_error stop_after = Stop_after.of_flags ~lex ~parse ~codegen ~emit in
+       let%bind.Or_error stop_after =
+         Stop_after.of_flags ~lex ~parse ~tacky ~codegen ~emit
+       in
        run ~stop_after source_file)
 ;;
 

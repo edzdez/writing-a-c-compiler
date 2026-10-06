@@ -41,5 +41,8 @@ rule next = parse
   | '{'                    { Token.Open_brace }
   | '}'                    { Token.Close_brace }
   | ';'                    { Token.Semicolon }
+  | "--"                   { Token.Double_hyphen }
+  | '-'                    { Token.Hyphen }
+  | '~'                    { Token.Tilde }
   | eof                    { Token.Eof }
   | _                      { raise_error lexbuf }

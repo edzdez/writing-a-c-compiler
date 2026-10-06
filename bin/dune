@@ -1,12 +1,13 @@
 (executable
  (name cc)
  (libraries
-  cgen
+  asm
   core
   core_unix
   core_unix.filename_unix
   core_unix.command_unix
   lex
-  parse)
+  parse
+  tacky)
  (preprocess
   (pps ppx_jane)))

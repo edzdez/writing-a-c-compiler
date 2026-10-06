@@ -17,13 +17,19 @@ let compile_exn ~stop_after ~input_file ~assembly_file =
     | Parse ->
       let token_stream = Lex.Token_stream.create lexbuf in
       print_s [%sexp (Parse.parse_prog token_stream : Ast.Prog.t)]
+    | Tacky ->
+      let token_stream = Lex.Token_stream.create lexbuf in
+      let ast = Parse.parse_prog token_stream in
+      print_s [%sexp (Tacky.Cgen.cgen_prog ast : Tacky.Prog.t)]
     | Codegen ->
       let token_stream = Lex.Token_stream.create lexbuf in
       let ast = Parse.parse_prog token_stream in
-      print_s [%sexp (Cgen.cgen_prog ast : Asm.Prog.t)]
+      let tacky = Tacky.Cgen.cgen_prog ast in
+      print_s [%sexp (Asm.Cgen.cgen_prog tacky : Asm.Prog.t)]
     | Emit | Link ->
       let token_stream = Lex.Token_stream.create lexbuf in
       let ast = Parse.parse_prog token_stream in
-      let asm = Cgen.cgen_prog ast in
+      let tacky = Tacky.Cgen.cgen_prog ast in
+      let asm = Asm.Cgen.cgen_prog tacky in
       Out_channel.with_file assembly_file ~f:(fun writer -> Asm.Prog.pp asm ~writer))
 ;;

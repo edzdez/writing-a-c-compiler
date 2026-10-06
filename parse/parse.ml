@@ -22,13 +22,33 @@ let expect token_stream expected =
     raise_error actual ~expected:(expected |> Token.sexp_of_t |> Sexp.to_string_hum)
 ;;
 
-let parse_expr token_stream =
+let parse_unary_op token_stream =
   let token = Token_stream.pop token_stream in
   match With_location.value token with
+  | Hyphen ->
+    With_location.create Unary_op.Negate ~location:(With_location.location token)
+  | Tilde ->
+    With_location.create Unary_op.Complement ~location:(With_location.location token)
+  | _ -> raise_error token ~expected:"a unary operator"
+;;
+
+let rec parse_expr token_stream =
+  let token = Token_stream.peek token_stream ~distance:0 in
+  match With_location.value token with
   | Const constant ->
+    let _ = Token_stream.pop token_stream in
+    With_location.create (Expr.Const constant) ~location:(With_location.location token)
+  | Hyphen | Tilde ->
+    let op = parse_unary_op token_stream in
+    let expr = parse_expr token_stream in
     With_location.create
-      (Expr.Node.Const constant)
+      (Expr.Unary { op; expr })
       ~location:(With_location.location token)
+  | Open_paren ->
+    let _ = Token_stream.pop token_stream in
+    let expr = parse_expr token_stream in
+    let _ = expect token_stream Close_paren in
+    expr
   | _ -> raise_error token ~expected:"an integer constant"
 ;;
 
@@ -41,7 +61,7 @@ let parse_stmt token_stream =
       (With_location.location return)
       (With_location.location semicolon)
   in
-  With_location.create (Stmt.Node.Return expr) ~location
+  With_location.create (Stmt.Return expr) ~location
 ;;
 
 let parse_fun_def token_stream =
@@ -63,7 +83,7 @@ let parse_fun_def token_stream =
       (With_location.location int)
       (With_location.location close_brace)
   in
-  With_location.create { Fun_def.Node.name; body } ~location
+  With_location.create { Fun_def.name; body } ~location
 ;;
 
 let parse_prog token_stream =
