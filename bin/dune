@@ -1,6 +1,7 @@
 (executable
  (name cc)
  (libraries
+  cgen
   core
   core_unix
   core_unix.filename_unix
