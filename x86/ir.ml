@@ -12,13 +12,18 @@ module Binary_op = struct
     | Add
     | Sub
     | Mult
+    | And
+    | Or
+    | Xor
+    | Shl
+    | Sar
   [@@deriving sexp_of]
 end
 
 module Operand = struct
   type t =
     | Imm of int
-    | Reg of [ `Ax | `Dx | `R10 | `R11 ]
+    | Reg of [ `Ax | `Cx | `Dx | `R10 | `R11 ]
     | Pseudo of string
     | Stack of int
   [@@deriving sexp_of]

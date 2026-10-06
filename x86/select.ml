@@ -9,6 +9,11 @@ let binary_op = function
   | Tacky.Ir.Binary_op.Add -> Ir.Binary_op.Add
   | Sub -> Sub
   | Mul -> Mult
+  | Bit_and -> And
+  | Bit_or -> Or
+  | Xor -> Xor
+  | L_shift -> Shl
+  | R_shift -> Sar
   | op -> raise_s [%message "unsupported binary op" (op : Tacky.Ir.Binary_op.t)]
 ;;
 
@@ -29,7 +34,7 @@ let instr instr ~instrs =
     let dst = operand dst in
     let right = operand right in
     (match op with
-     | Add | Sub | Mul ->
+     | Add | Sub | Mul | Bit_and | Bit_or | Xor | L_shift | R_shift ->
        Vec.push_back instrs (Ir.Instr.Mov { src = left; dst });
        Vec.push_back instrs (Ir.Instr.Binary { op = binary_op op; src = right; dst })
      | Div | Rem ->

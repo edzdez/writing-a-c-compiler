@@ -18,5 +18,10 @@ type t =
   | Star
   | Slash
   | Percent
+  | Ampersand
+  | Bar
+  | Caret
+  | Left_chevron
+  | Right_chevron
   | Eof
 [@@deriving compare, equal, sexp]

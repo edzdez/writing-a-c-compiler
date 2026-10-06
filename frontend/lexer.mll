@@ -44,5 +44,10 @@ rule next = parse
   | '*'                    { Token.Star }
   | '/'                    { Token.Slash }
   | '%'                    { Token.Percent }
+  | '&'                    { Token.Ampersand }
+  | '|'                    { Token.Bar }
+  | '^'                    { Token.Caret }
+  | "<<"                   { Token.Left_chevron }
+  | ">>"                   { Token.Right_chevron }
   | eof                    { Token.Eof }
   | _                      { raise_error lexbuf }

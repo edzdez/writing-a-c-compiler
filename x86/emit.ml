@@ -9,11 +9,17 @@ let binary_op = function
   | Ir.Binary_op.Add -> "addl"
   | Sub -> "subl"
   | Mult -> "imull"
+  | And -> "andl"
+  | Or -> "orl "
+  | Xor -> "xorl"
+  | Shl -> "shll"
+  | Sar -> "sarl"
 ;;
 
 let operand = function
   | Ir.Operand.Imm imm -> [%string "$%{imm#Int}"]
   | Reg `Ax -> "%eax"
+  | Reg `Cx -> "%ecx"
   | Reg `Dx -> "%edx"
   | Reg `R10 -> "%r10d"
   | Reg `R11 -> "%r11d"
@@ -27,6 +33,8 @@ let instr instr ~writer =
     Out_channel.output_line writer [%string "\tmovl\t%{operand src}, %{operand dst}"]
   | Unary { op; dst } ->
     Out_channel.output_line writer [%string "\t%{unary_op op}\t%{operand dst}"]
+  | Binary { op = (Shl | Sar) as op; src = Reg `Cx; dst } ->
+    Out_channel.output_line writer [%string "\t%{binary_op op}\t%cl, %{operand dst}"]
   | Binary { op; src; dst } ->
     Out_channel.output_line
       writer

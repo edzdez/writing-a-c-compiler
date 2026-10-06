@@ -31,6 +31,11 @@ let precedence bin_op =
   | Star -> 50
   | Slash -> 50
   | Percent -> 50
+  | Ampersand -> 25
+  | Bar -> 15
+  | Caret -> 20
+  | Left_chevron -> 40
+  | Right_chevron -> 40
   | _ -> raise_s [%message "unknown precedence" (bin_op : Token.t)]
 ;;
 
@@ -42,6 +47,11 @@ let parse_binary_op token_stream =
   | Star -> Located.create Binary_op.Mul ~location:(Located.location token)
   | Slash -> Located.create Binary_op.Div ~location:(Located.location token)
   | Percent -> Located.create Binary_op.Rem ~location:(Located.location token)
+  | Ampersand -> Located.create Binary_op.Bit_and ~location:(Located.location token)
+  | Bar -> Located.create Binary_op.Bit_or ~location:(Located.location token)
+  | Caret -> Located.create Binary_op.Xor ~location:(Located.location token)
+  | Left_chevron -> Located.create Binary_op.L_shift ~location:(Located.location token)
+  | Right_chevron -> Located.create Binary_op.R_shift ~location:(Located.location token)
   | _ -> raise_error token ~expected:"a binary operator"
 ;;
 
@@ -50,7 +60,16 @@ let rec parse_expr token_stream ~min_precedence =
   let mutable token = Located.value (Token_stream.peek token_stream ~distance:0) in
   while
     match token with
-    | Plus | Hyphen | Star | Slash | Percent -> precedence token >= min_precedence
+    | Plus
+    | Hyphen
+    | Star
+    | Slash
+    | Percent
+    | Ampersand
+    | Bar
+    | Caret
+    | Left_chevron
+    | Right_chevron -> precedence token >= min_precedence
     | _ -> false
   do
     let op = parse_binary_op token_stream in

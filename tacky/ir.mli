@@ -14,6 +14,11 @@ module Binary_op : sig
     | Mul
     | Div
     | Rem
+    | Bit_and
+    | Bit_or
+    | Xor
+    | L_shift
+    | R_shift
   [@@deriving sexp_of]
 end
 

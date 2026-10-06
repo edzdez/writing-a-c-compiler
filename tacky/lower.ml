@@ -27,6 +27,11 @@ let lower_binary_op binary_op =
   | Mul -> Mul
   | Div -> Div
   | Rem -> Rem
+  | Bit_and -> Bit_and
+  | Bit_or -> Bit_or
+  | Xor -> Xor
+  | L_shift -> L_shift
+  | R_shift -> R_shift
 ;;
 
 let rec lower_expr expr ~temp_vars ~instrs =

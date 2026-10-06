@@ -8,13 +8,19 @@ let program { Ir.Fun_def.name; instrs = input } =
       Vec.push_back instrs (Ir.Instr.Mov { src; dst = Ir.Operand.Reg `R10 });
       Vec.push_back instrs (Ir.Instr.Mov { src = Ir.Operand.Reg `R10; dst })
     | Ir.Instr.Binary
-        { op = (Add | Sub) as op; src = Stack _ as src; dst = Stack _ as dst } ->
+        { op = (Add | Sub | And | Or | Xor) as op
+        ; src = Stack _ as src
+        ; dst = Stack _ as dst
+        } ->
       Vec.push_back instrs (Ir.Instr.Mov { src; dst = Ir.Operand.Reg `R10 });
       Vec.push_back instrs (Ir.Instr.Binary { op; src = Ir.Operand.Reg `R10; dst })
     | Ir.Instr.Binary { op = Mult as op; src; dst = Stack _ as dst } ->
       Vec.push_back instrs (Ir.Instr.Mov { src = dst; dst = Ir.Operand.Reg `R11 });
       Vec.push_back instrs (Ir.Instr.Binary { op; src; dst = Ir.Operand.Reg `R11 });
       Vec.push_back instrs (Ir.Instr.Mov { src = Ir.Operand.Reg `R11; dst })
+    | Ir.Instr.Binary { op = (Shl | Sar) as op; src = (Stack _ | Reg _) as src; dst } ->
+      Vec.push_back instrs (Ir.Instr.Mov { src; dst = Ir.Operand.Reg `Cx });
+      Vec.push_back instrs (Ir.Instr.Binary { op; src = Ir.Operand.Reg `Cx; dst })
     | Idiv (Imm _ as op) ->
       Vec.push_back instrs (Ir.Instr.Mov { src = op; dst = Ir.Operand.Reg `R10 });
       Vec.push_back instrs (Ir.Instr.Idiv (Ir.Operand.Reg `R10))
