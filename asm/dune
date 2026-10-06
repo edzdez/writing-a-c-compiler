@@ -1,5 +1,0 @@
-(library
- (name asm)
- (libraries core tacky util vec)
- (preprocess
-  (pps ppx_jane)))

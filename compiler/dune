@@ -1,0 +1,5 @@
+(library
+ (name compiler)
+ (libraries core frontend tacky x86)
+ (preprocess
+  (pps ppx_jane)))

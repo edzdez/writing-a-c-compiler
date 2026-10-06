@@ -32,12 +32,13 @@ let run ~stop_after source_file =
     Exn.protect
       ~f:(stack_ fun () ->
         preprocess_exn ~input_file:source_file ~output_file:preprocessed_file;
-        Compile.compile_exn ~stop_after ~input_file:preprocessed_file ~assembly_file;
-        if Stop_after.equal stop_after Link
+        Compiler.compile_exn ~stop_after ~input_file:preprocessed_file ~assembly_file;
+        if Compiler.Stage.equal stop_after Link
         then assemble_and_link_exn ~assembly_file ~output_file)
       ~finally:(stack_ fun () ->
         remove preprocessed_file;
-        if not (Stop_after.equal stop_after Emit) then remove assembly_file) [@nontail]
+        if not (Compiler.Stage.equal stop_after Emit) then remove assembly_file)
+    [@nontail]
   in
   Or_error.try_with (stack_ fun () -> run_exn source_file) [@nontail]
 ;;
@@ -53,7 +54,7 @@ let command =
      and source_file = anon ("SOURCE_FILE" %: Filename_unix.arg_type) in
      fun () ->
        let%bind.Or_error stop_after =
-         Stop_after.of_flags ~lex ~parse ~tacky ~codegen ~emit
+         Compiler.Stage.of_flags ~lex ~parse ~tacky ~codegen ~emit
        in
        run ~stop_after source_file)
 ;;

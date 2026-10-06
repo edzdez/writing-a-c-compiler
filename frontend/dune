@@ -1,0 +1,7 @@
+(library
+ (name frontend)
+ (libraries core source)
+ (preprocess
+  (pps ppx_jane)))
+
+(ocamllex lexer)

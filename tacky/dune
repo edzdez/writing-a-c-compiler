@@ -1,5 +1,5 @@
 (library
  (name tacky)
- (libraries ast core util vec)
+ (libraries core frontend source vec)
  (preprocess
   (pps ppx_jane)))

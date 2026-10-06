@@ -1,13 +1,10 @@
 (executable
  (name cc)
  (libraries
-  asm
+  compiler
   core
   core_unix
   core_unix.filename_unix
-  core_unix.command_unix
-  lex
-  parse
-  tacky)
+  core_unix.command_unix)
  (preprocess
   (pps ppx_jane)))

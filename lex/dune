@@ -1,7 +1,0 @@
-(library
- (name lex)
- (libraries core util)
- (preprocess
-  (pps ppx_jane)))
-
-(ocamllex lexer)
