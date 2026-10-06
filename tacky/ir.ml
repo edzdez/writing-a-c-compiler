@@ -7,6 +7,16 @@ module Unary_op = struct
   [@@deriving sexp_of]
 end
 
+module Binary_op = struct
+  type t =
+    | Add
+    | Sub
+    | Mul
+    | Div
+    | Rem
+  [@@deriving sexp_of]
+end
+
 module Val = struct
   type t =
     | Constant of int
@@ -19,6 +29,12 @@ module Instr = struct
     | Unary of
         { op : Unary_op.t
         ; src : Val.t
+        ; dst : Val.t
+        }
+    | Binary of
+        { op : Binary_op.t
+        ; left : Val.t
+        ; right : Val.t
         ; dst : Val.t
         }
     | Return of Val.t

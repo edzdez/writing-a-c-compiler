@@ -9,6 +9,18 @@ module Unary_op = struct
   [@@deriving sexp_of]
 end
 
+module Binary_op = struct
+  type t = node Source.Located.t
+
+  and node =
+    | Add
+    | Sub
+    | Mul
+    | Div
+    | Rem
+  [@@deriving sexp_of]
+end
+
 module Expr = struct
   type t = node Source.Located.t
 
@@ -17,6 +29,11 @@ module Expr = struct
     | Unary of
         { op : Unary_op.t
         ; expr : t
+        }
+    | Binary of
+        { op : Binary_op.t
+        ; left : t
+        ; right : t
         }
   [@@deriving sexp_of]
 end

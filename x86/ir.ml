@@ -7,10 +7,18 @@ module Unary_op = struct
   [@@deriving sexp_of]
 end
 
+module Binary_op = struct
+  type t =
+    | Add
+    | Sub
+    | Mult
+  [@@deriving sexp_of]
+end
+
 module Operand = struct
   type t =
     | Imm of int
-    | Reg of [ `Ax | `R10 ]
+    | Reg of [ `Ax | `Dx | `R10 | `R11 ]
     | Pseudo of string
     | Stack of int
   [@@deriving sexp_of]
@@ -26,6 +34,13 @@ module Instr = struct
         { op : Unary_op.t
         ; dst : Operand.t
         }
+    | Binary of
+        { op : Binary_op.t
+        ; src : Operand.t
+        ; dst : Operand.t
+        }
+    | Idiv of Operand.t
+    | Cdq
     | Alloc_stack of int
     | Ret
   [@@deriving sexp_of]

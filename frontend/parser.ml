@@ -24,7 +24,46 @@ let parse_unary_op token_stream =
   | _ -> raise_error token ~expected:"a unary operator"
 ;;
 
-let rec parse_expr token_stream =
+let precedence bin_op =
+  match bin_op with
+  | Token.Plus -> 45
+  | Hyphen -> 45
+  | Star -> 50
+  | Slash -> 50
+  | Percent -> 50
+  | _ -> raise_s [%message "unknown precedence" (bin_op : Token.t)]
+;;
+
+let parse_binary_op token_stream =
+  let token = Token_stream.pop token_stream in
+  match Located.value token with
+  | Plus -> Located.create Binary_op.Add ~location:(Located.location token)
+  | Hyphen -> Located.create Binary_op.Sub ~location:(Located.location token)
+  | Star -> Located.create Binary_op.Mul ~location:(Located.location token)
+  | Slash -> Located.create Binary_op.Div ~location:(Located.location token)
+  | Percent -> Located.create Binary_op.Rem ~location:(Located.location token)
+  | _ -> raise_error token ~expected:"a binary operator"
+;;
+
+let rec parse_expr token_stream ~min_precedence =
+  let mutable left = parse_factor token_stream in
+  let mutable token = Located.value (Token_stream.peek token_stream ~distance:0) in
+  while
+    match token with
+    | Plus | Hyphen | Star | Slash | Percent -> precedence token >= min_precedence
+    | _ -> false
+  do
+    let op = parse_binary_op token_stream in
+    let right = parse_expr token_stream ~min_precedence:(precedence token + 1) in
+    let location =
+      Source.Location.between (Located.location left) (Located.location right)
+    in
+    left <- Located.create (Expr.Binary { op; left; right }) ~location;
+    token <- Located.value (Token_stream.peek token_stream ~distance:0)
+  done;
+  left
+
+and parse_factor token_stream =
   let token = Token_stream.peek token_stream ~distance:0 in
   match Located.value token with
   | Const constant ->
@@ -32,14 +71,14 @@ let rec parse_expr token_stream =
     Located.create (Expr.Const constant) ~location:(Located.location token)
   | Hyphen | Tilde ->
     let op = parse_unary_op token_stream in
-    let expr = parse_expr token_stream in
+    let expr = parse_factor token_stream in
     let location =
       Source.Location.between (Located.location op) (Located.location expr)
     in
     Located.create (Expr.Unary { op; expr }) ~location
   | Open_paren ->
     let open_paren = Token_stream.pop token_stream in
-    let expr = parse_expr token_stream in
+    let expr = parse_expr token_stream ~min_precedence:0 in
     let close_paren = expect token_stream Close_paren in
     let location =
       Source.Location.between (Located.location open_paren) (Located.location close_paren)
@@ -50,7 +89,7 @@ let rec parse_expr token_stream =
 
 let parse_stmt token_stream =
   let return = expect token_stream Return in
-  let expr = parse_expr token_stream in
+  let expr = parse_expr token_stream ~min_precedence:0 in
   let semicolon = expect token_stream Semicolon in
   let location =
     Source.Location.between (Located.location return) (Located.location semicolon)

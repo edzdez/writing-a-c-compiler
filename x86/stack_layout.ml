@@ -16,8 +16,10 @@ let program { Ir.Fun_def.name; instrs = input } =
     let instr =
       match instr with
       | Ir.Instr.Mov { src; dst } -> Ir.Instr.Mov { src = operand src; dst = operand dst }
-      | Unary { op; dst } -> Ir.Instr.Unary { op; dst = operand dst }
-      | Alloc_stack _ | Ret -> instr
+      | Unary { op; dst } -> Unary { op; dst = operand dst }
+      | Binary { op; src; dst } -> Binary { op; src = operand src; dst = operand dst }
+      | Idiv op -> Idiv (operand op)
+      | Cdq | Alloc_stack _ | Ret -> instr
     in
     Vec.push_back instrs instr);
   Vec.unsafe_set instrs 0 (Ir.Instr.Alloc_stack (Hashtbl.length stack_slots * 4));

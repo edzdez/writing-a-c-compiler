@@ -14,5 +14,9 @@ type t =
   | Hyphen
   | Double_hyphen
   | Tilde
+  | Plus
+  | Star
+  | Slash
+  | Percent
   | Eof
 [@@deriving compare, equal, sexp]

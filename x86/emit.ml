@@ -5,10 +5,18 @@ let unary_op = function
   | Not -> "notl"
 ;;
 
+let binary_op = function
+  | Ir.Binary_op.Add -> "addl"
+  | Sub -> "subl"
+  | Mult -> "imull"
+;;
+
 let operand = function
   | Ir.Operand.Imm imm -> [%string "$%{imm#Int}"]
   | Reg `Ax -> "%eax"
+  | Reg `Dx -> "%edx"
   | Reg `R10 -> "%r10d"
+  | Reg `R11 -> "%r11d"
   | Stack offset -> [%string "%{-offset#Int}(%rbp)"]
   | Pseudo _ -> failwith "pseudo registers should not be emitted."
 ;;
@@ -19,6 +27,12 @@ let instr instr ~writer =
     Out_channel.output_line writer [%string "\tmovl\t%{operand src}, %{operand dst}"]
   | Unary { op; dst } ->
     Out_channel.output_line writer [%string "\t%{unary_op op}\t%{operand dst}"]
+  | Binary { op; src; dst } ->
+    Out_channel.output_line
+      writer
+      [%string "\t%{binary_op op}\t%{operand src}, %{operand dst}"]
+  | Idiv dst -> Out_channel.output_line writer [%string "\tidivl\t%{operand dst}"]
+  | Cdq -> Out_channel.output_line writer [%string "\tcdq"]
   | Alloc_stack bytes ->
     Out_channel.output_line writer [%string "\tsubq\t$%{bytes#Int}, %rsp"]
   | Ret ->

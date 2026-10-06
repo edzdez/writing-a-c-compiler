@@ -20,6 +20,15 @@ let lower_unary_op unary_op =
   | Negate -> Negate
 ;;
 
+let lower_binary_op binary_op =
+  match Located.value binary_op with
+  | Ast.Binary_op.Add -> Ir.Binary_op.Add
+  | Sub -> Sub
+  | Mul -> Mul
+  | Div -> Div
+  | Rem -> Rem
+;;
+
 let rec lower_expr expr ~temp_vars ~instrs =
   match Located.value expr with
   | Ast.Expr.Const constant -> Ir.Val.Constant constant
@@ -28,6 +37,13 @@ let rec lower_expr expr ~temp_vars ~instrs =
     let dst = Ir.Val.Var [%string "tmp.%{Temp_var.fresh temp_vars#Int}"] in
     let op = lower_unary_op op in
     Vec.push_back instrs (Ir.Instr.Unary { op; src; dst });
+    dst
+  | Binary { op; left; right } ->
+    let left = lower_expr left ~temp_vars ~instrs in
+    let right = lower_expr right ~temp_vars ~instrs in
+    let dst = Ir.Val.Var [%string "tmp.%{Temp_var.fresh temp_vars#Int}"] in
+    let op = lower_binary_op op in
+    Vec.push_back instrs (Ir.Instr.Binary { op; left; right; dst });
     dst
 ;;
 

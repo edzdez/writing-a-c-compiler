@@ -40,5 +40,9 @@ rule next = parse
   | "--"                   { Token.Double_hyphen }
   | '-'                    { Token.Hyphen }
   | '~'                    { Token.Tilde }
+  | '+'                    { Token.Plus }
+  | '*'                    { Token.Star }
+  | '/'                    { Token.Slash }
+  | '%'                    { Token.Percent }
   | eof                    { Token.Eof }
   | _                      { raise_error lexbuf }
