@@ -1,29 +1,5 @@
 open! Core
 
-module Stop_after = struct
-  type t =
-    | Lex
-    | Parse
-    | Codegen
-    | Emit
-    | Link
-  [@@deriving compare, equal, sexp]
-
-  let of_flags ~lex ~parse ~codegen ~emit =
-    match
-      List.filter_opt
-        [ Option.some_if lex Lex
-        ; Option.some_if parse Parse
-        ; Option.some_if codegen Codegen
-        ; Option.some_if emit Emit
-        ]
-    with
-    | [] -> Ok Link
-    | [ stop_after ] -> Ok stop_after
-    | _ -> Or_error.error_s [%message "At most one stopping option may be specified"]
-  ;;
-end
-
 let base_exn file =
   match Filename.split_extension file with
   | base, Some "c" -> base
@@ -44,23 +20,6 @@ let preprocess_exn ~input_file ~output_file =
   run_gcc_exn [ "-E"; "-P"; input_file; "-o"; output_file ]
 ;;
 
-let compile_exn ~stop_after ~input_file ~assembly_file =
-  let rec lex_to_end lexbuf =
-    match Lex.next lexbuf with
-    | Eof -> ()
-    | token ->
-      print_s [%sexp (token : Lex.Token.t)];
-      lex_to_end lexbuf
-  in
-  In_channel.with_file input_file ~f:(fun ic ->
-    let lexbuf = Lexing.from_channel ic in
-    Lexing.set_filename lexbuf input_file;
-    lex_to_end lexbuf;
-    match (stop_after : Stop_after.t) with
-    | Lex | Parse | Codegen -> ()
-    | Emit | Link -> Out_channel.with_file assembly_file ~f:(fun _ -> ()))
-;;
-
 let assemble_and_link_exn ~assembly_file ~output_file =
   run_gcc_exn [ assembly_file; "-o"; output_file ]
 ;;
@@ -73,7 +32,7 @@ let run ~stop_after source_file =
     Exn.protect
       ~f:(stack_ fun () ->
         preprocess_exn ~input_file:source_file ~output_file:preprocessed_file;
-        compile_exn ~stop_after ~input_file:preprocessed_file ~assembly_file;
+        Compile.compile_exn ~stop_after ~input_file:preprocessed_file ~assembly_file;
         if Stop_after.equal stop_after Link
         then assemble_and_link_exn ~assembly_file ~output_file)
       ~finally:(stack_ fun () ->
