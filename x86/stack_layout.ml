@@ -18,8 +18,10 @@ let program { Ir.Fun_def.name; instrs = input } =
       | Ir.Instr.Mov { src; dst } -> Ir.Instr.Mov { src = operand src; dst = operand dst }
       | Unary { op; dst } -> Unary { op; dst = operand dst }
       | Binary { op; src; dst } -> Binary { op; src = operand src; dst = operand dst }
+      | Cmp { left; right } -> Cmp { left = operand left; right = operand right }
       | Idiv op -> Idiv (operand op)
-      | Cdq | Alloc_stack _ | Ret -> instr
+      | Set_cc { cc; dst } -> Set_cc { cc; dst = operand dst }
+      | Cdq | Jmp _ | Jmp_cc _ | Label _ | Alloc_stack _ | Ret -> instr
     in
     Vec.push_back instrs instr);
   Vec.unsafe_set instrs 0 (Ir.Instr.Alloc_stack (Hashtbl.length stack_slots * 4));

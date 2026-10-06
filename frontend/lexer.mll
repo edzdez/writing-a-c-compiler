@@ -49,5 +49,14 @@ rule next = parse
   | '^'                    { Token.Caret }
   | "<<"                   { Token.Left_chevron }
   | ">>"                   { Token.Right_chevron }
+  | "&&"                   { Token.Double_amp }
+  | "||"                   { Token.Double_bar }
+  | "=="                   { Token.Double_eq }
+  | "!="                   { Token.Bang_eq }
+  | "<="                   { Token.Lte }
+  | ">="                   { Token.Gte }
+  | '!'                    { Token.Bang }
+  | '<'                    { Token.Lt }
+  | '>'                    { Token.Gt }
   | eof                    { Token.Eof }
   | _                      { raise_error lexbuf }

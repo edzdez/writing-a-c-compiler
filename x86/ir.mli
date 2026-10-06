@@ -24,7 +24,25 @@ module Binary_op : sig
   [@@deriving sexp_of]
 end
 
+module Cond_code : sig
+  type t =
+    | E
+    | Ne
+    | G
+    | Ge
+    | L
+    | Le
+  [@@deriving sexp_of]
+end
+
 module Operand : sig
+  module Size : sig
+    type t =
+      | Byte
+      | Long
+    [@@deriving sexp_of]
+  end
+
   type t =
     | Imm of int
     | Reg of [ `Ax | `Cx | `Dx | `R10 | `R11 ]
@@ -48,8 +66,22 @@ module Instr : sig
         ; src : Operand.t
         ; dst : Operand.t
         }
+    | Cmp of
+        { left : Operand.t
+        ; right : Operand.t
+        }
     | Idiv of Operand.t
     | Cdq
+    | Jmp of string
+    | Jmp_cc of
+        { cc : Cond_code.t
+        ; tgt : string
+        }
+    | Set_cc of
+        { cc : Cond_code.t
+        ; dst : Operand.t
+        }
+    | Label of string
     | Alloc_stack of int
     | Ret
   [@@deriving sexp_of]

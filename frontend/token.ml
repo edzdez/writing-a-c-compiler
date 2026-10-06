@@ -23,5 +23,14 @@ type t =
   | Caret
   | Left_chevron
   | Right_chevron
+  | Bang
+  | Double_amp
+  | Double_bar
+  | Double_eq
+  | Bang_eq
+  | Lt
+  | Gt
+  | Lte
+  | Gte
   | Eof
 [@@deriving compare, equal, sexp]

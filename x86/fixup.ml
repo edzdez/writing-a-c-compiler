@@ -21,6 +21,12 @@ let program { Ir.Fun_def.name; instrs = input } =
     | Ir.Instr.Binary { op = (Shl | Sar) as op; src = (Stack _ | Reg _) as src; dst } ->
       Vec.push_back instrs (Ir.Instr.Mov { src; dst = Ir.Operand.Reg `Cx });
       Vec.push_back instrs (Ir.Instr.Binary { op; src = Ir.Operand.Reg `Cx; dst })
+    | Ir.Instr.Cmp { left; right = Imm imm as right } ->
+      Vec.push_back instrs (Ir.Instr.Mov { src = right; dst = Ir.Operand.Reg `R11 });
+      Vec.push_back instrs (Ir.Instr.Cmp { left; right = Ir.Operand.Reg `R11 })
+    | Ir.Instr.Cmp { left = Stack _ as left; right = Stack _ as right } ->
+      Vec.push_back instrs (Ir.Instr.Mov { src = left; dst = Ir.Operand.Reg `R10 });
+      Vec.push_back instrs (Ir.Instr.Cmp { left = Ir.Operand.Reg `R10; right })
     | Idiv (Imm _ as op) ->
       Vec.push_back instrs (Ir.Instr.Mov { src = op; dst = Ir.Operand.Reg `R10 });
       Vec.push_back instrs (Ir.Instr.Idiv (Ir.Operand.Reg `R10))

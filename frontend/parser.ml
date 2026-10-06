@@ -21,6 +21,7 @@ let parse_unary_op token_stream =
   match Located.value token with
   | Hyphen -> Located.create Unary_op.Negate ~location:(Located.location token)
   | Tilde -> Located.create Unary_op.Complement ~location:(Located.location token)
+  | Bang -> Located.create Unary_op.Not ~location:(Located.location token)
   | _ -> raise_error token ~expected:"a unary operator"
 ;;
 
@@ -36,7 +37,15 @@ let precedence bin_op =
   | Caret -> 20
   | Left_chevron -> 40
   | Right_chevron -> 40
-  | _ -> raise_s [%message "unknown precedence" (bin_op : Token.t)]
+  | Double_amp -> 10
+  | Double_bar -> 5
+  | Double_eq -> 30
+  | Bang_eq -> 30
+  | Lt -> 35
+  | Gt -> 35
+  | Lte -> 35
+  | Gte -> 35
+  | _ -> -1
 ;;
 
 let parse_binary_op token_stream =
@@ -52,26 +61,21 @@ let parse_binary_op token_stream =
   | Caret -> Located.create Binary_op.Xor ~location:(Located.location token)
   | Left_chevron -> Located.create Binary_op.L_shift ~location:(Located.location token)
   | Right_chevron -> Located.create Binary_op.R_shift ~location:(Located.location token)
+  | Double_amp -> Located.create Binary_op.And ~location:(Located.location token)
+  | Double_bar -> Located.create Binary_op.Or ~location:(Located.location token)
+  | Double_eq -> Located.create Binary_op.Eq ~location:(Located.location token)
+  | Bang_eq -> Located.create Binary_op.Neq ~location:(Located.location token)
+  | Lt -> Located.create Binary_op.Lt ~location:(Located.location token)
+  | Gt -> Located.create Binary_op.Gt ~location:(Located.location token)
+  | Lte -> Located.create Binary_op.Lte ~location:(Located.location token)
+  | Gte -> Located.create Binary_op.Gte ~location:(Located.location token)
   | _ -> raise_error token ~expected:"a binary operator"
 ;;
 
 let rec parse_expr token_stream ~min_precedence =
   let mutable left = parse_factor token_stream in
   let mutable token = Located.value (Token_stream.peek token_stream ~distance:0) in
-  while
-    match token with
-    | Plus
-    | Hyphen
-    | Star
-    | Slash
-    | Percent
-    | Ampersand
-    | Bar
-    | Caret
-    | Left_chevron
-    | Right_chevron -> precedence token >= min_precedence
-    | _ -> false
-  do
+  while precedence token >= min_precedence do
     let op = parse_binary_op token_stream in
     let right = parse_expr token_stream ~min_precedence:(precedence token + 1) in
     let location =
@@ -88,7 +92,7 @@ and parse_factor token_stream =
   | Const constant ->
     let _ = Token_stream.pop token_stream in
     Located.create (Expr.Const constant) ~location:(Located.location token)
-  | Hyphen | Tilde ->
+  | Hyphen | Tilde | Bang ->
     let op = parse_unary_op token_stream in
     let expr = parse_factor token_stream in
     let location =

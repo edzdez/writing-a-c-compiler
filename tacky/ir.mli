@@ -4,6 +4,7 @@ module Unary_op : sig
   type t =
     | Complement
     | Negate
+    | Not
   [@@deriving sexp_of]
 end
 
@@ -19,6 +20,12 @@ module Binary_op : sig
     | Xor
     | L_shift
     | R_shift
+    | Eq
+    | Neq
+    | Lt
+    | Gt
+    | Lte
+    | Gte
   [@@deriving sexp_of]
 end
 
@@ -42,6 +49,20 @@ module Instr : sig
         ; right : Val.t
         ; dst : Val.t
         }
+    | Copy of
+        { src : Val.t
+        ; dst : Val.t
+        }
+    | Jmp of string
+    | Jz of
+        { tst : Val.t
+        ; tgt : string
+        }
+    | Jnz of
+        { tst : Val.t
+        ; tgt : string
+        }
+    | Label of string
     | Return of Val.t
   [@@deriving sexp_of]
 end

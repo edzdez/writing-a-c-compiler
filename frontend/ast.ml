@@ -6,6 +6,7 @@ module Unary_op = struct
   and node =
     | Complement
     | Negate
+    | Not
   [@@deriving sexp_of]
 end
 
@@ -23,6 +24,14 @@ module Binary_op = struct
     | Xor
     | L_shift
     | R_shift
+    | And
+    | Or
+    | Eq
+    | Neq
+    | Lt
+    | Gt
+    | Lte
+    | Gte
   [@@deriving sexp_of]
 end
 
