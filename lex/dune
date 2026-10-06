@@ -1,6 +1,6 @@
 (library
  (name lex)
- (libraries core)
+ (libraries core util)
  (preprocess
   (pps ppx_jane)))
 
