@@ -1,0 +1,5 @@
+(library
+ (name parse)
+ (libraries ast core lex util)
+ (preprocess
+  (pps ppx_jane)))

@@ -5,6 +5,7 @@
   core_unix
   core_unix.filename_unix
   core_unix.command_unix
-  lex)
+  lex
+  parse)
  (preprocess
   (pps ppx_jane)))

@@ -14,6 +14,9 @@ let compile_exn ~stop_after ~input_file ~assembly_file =
     Lexing.set_filename lexbuf input_file;
     match (stop_after : Stop_after.t) with
     | Lex -> lex_to_end lexbuf
-    | Parse | Codegen -> ()
+    | Parse ->
+      let token_stream = Lex.Token_stream.create lexbuf in
+      print_s [%sexp (Parse.parse_prog token_stream : Ast.Prog.t)]
+    | Codegen -> ()
     | Emit | Link -> Out_channel.with_file assembly_file ~f:(fun _ -> ()))
 ;;
