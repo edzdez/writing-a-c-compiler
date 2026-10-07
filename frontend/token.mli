@@ -33,5 +33,15 @@ type t =
   | Lte
   | Gte
   | Eq
+  | Plus_eq
+  | Hyphen_eq
+  | Star_eq
+  | Slash_eq
+  | Percent_eq
+  | Amp_eq
+  | Bar_eq
+  | Caret_eq
+  | Left_chevron_eq
+  | Right_chevron_eq
   | Eof
 [@@deriving compare, equal, sexp]

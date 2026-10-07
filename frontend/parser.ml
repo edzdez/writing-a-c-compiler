@@ -45,7 +45,17 @@ let precedence bin_op =
   | Gt -> 35
   | Lte -> 35
   | Gte -> 35
-  | Eq -> 1
+  | Eq
+  | Plus_eq
+  | Hyphen_eq
+  | Star_eq
+  | Slash_eq
+  | Percent_eq
+  | Amp_eq
+  | Bar_eq
+  | Caret_eq
+  | Left_chevron_eq
+  | Right_chevron_eq -> 1
   | _ -> -1
 ;;
 
@@ -73,18 +83,52 @@ let parse_binary_op token_stream =
   | _ -> raise_error token ~expected:"a binary operator"
 ;;
 
+let compound_assignment_op token =
+  let op =
+    match Located.value token with
+    | Token.Plus_eq -> Binary_op.Add
+    | Hyphen_eq -> Sub
+    | Star_eq -> Mul
+    | Slash_eq -> Div
+    | Percent_eq -> Rem
+    | Amp_eq -> Bit_and
+    | Bar_eq -> Bit_or
+    | Caret_eq -> Xor
+    | Left_chevron_eq -> L_shift
+    | Right_chevron_eq -> R_shift
+    | token -> raise_s [%message "not a compound assignment operator" (token : Token.t)]
+  in
+  Located.create op ~location:(Located.location token)
+;;
+
 let rec parse_expr token_stream ~min_precedence =
   let mutable left = parse_factor token_stream in
   let mutable token = Located.value (Token_stream.peek token_stream ~distance:0) in
   while precedence token >= min_precedence do
     match token with
-    | Eq ->
-      let _ = expect token_stream Eq in
+    | Eq
+    | Plus_eq
+    | Hyphen_eq
+    | Star_eq
+    | Slash_eq
+    | Percent_eq
+    | Amp_eq
+    | Bar_eq
+    | Caret_eq
+    | Left_chevron_eq
+    | Right_chevron_eq ->
+      let assignment_op = Token_stream.pop token_stream in
       let right = parse_expr token_stream ~min_precedence:(precedence token) in
       let location =
         Source.Location.between (Located.location left) (Located.location right)
       in
-      left <- Located.create (Expr.Assign { left; right }) ~location;
+      let assignment =
+        match token with
+        | Eq -> Expr.Assign { left; right }
+        | _ ->
+          Expr.Compound_assign { op = compound_assignment_op assignment_op; left; right }
+      in
+      left <- Located.create assignment ~location;
       token <- Located.value (Token_stream.peek token_stream ~distance:0)
     | _ ->
       let op = parse_binary_op token_stream in

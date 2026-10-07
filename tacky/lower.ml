@@ -56,6 +56,12 @@ let jmp_instr_for op tst tgt =
     ~or_:(stack_ fun () -> Ir.Instr.Jnz { tst; tgt }) [@nontail]
 ;;
 
+let lower_lvalue expr =
+  match Located.value expr with
+  | Ast.Expr.Var v -> Ir.Val.Var v
+  | expr -> raise_s [%message "invalid lvalue" (expr : Ast.Expr.node)]
+;;
+
 let rec lower_expr expr ~temp_vars ~temp_lbls ~instrs =
   match Located.value expr with
   | Ast.Expr.Const constant -> Ir.Val.Constant constant
@@ -109,9 +115,17 @@ let rec lower_expr expr ~temp_vars ~temp_lbls ~instrs =
        dst)
   | Assign { left; right } ->
     let src = lower_expr right ~temp_vars ~temp_lbls ~instrs in
-    let dst = lower_expr left ~temp_vars ~temp_lbls ~instrs in
+    let dst = lower_lvalue left in
     Vec.push_back instrs (Ir.Instr.Copy { src; dst });
     dst
+  | Compound_assign { op; left; right } ->
+    let dst = lower_lvalue left in
+    let right = lower_expr right ~temp_vars ~temp_lbls ~instrs in
+    let result = Ir.Val.Var [%string "tmp.%{Temp.fresh temp_vars#Int}"] in
+    let op = lower_binary_op op in
+    Vec.push_back instrs (Ir.Instr.Binary { op; left = dst; right; dst = result });
+    Vec.push_back instrs (Ir.Instr.Copy { src = result; dst });
+    result
 ;;
 
 let lower_decl decl ~temp_vars ~temp_lbls ~instrs =

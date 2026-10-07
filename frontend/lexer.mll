@@ -38,16 +38,26 @@ rule next = parse
   | '}'                    { Token.Close_brace }
   | ';'                    { Token.Semicolon }
   | "--"                   { Token.Double_hyphen }
+  | "-="                   { Token.Hyphen_eq }
   | '-'                    { Token.Hyphen }
   | '~'                    { Token.Tilde }
+  | "+="                   { Token.Plus_eq }
   | '+'                    { Token.Plus }
+  | "*="                   { Token.Star_eq }
   | '*'                    { Token.Star }
+  | "/="                   { Token.Slash_eq }
   | '/'                    { Token.Slash }
+  | "%="                   { Token.Percent_eq }
   | '%'                    { Token.Percent }
+  | "&="                   { Token.Amp_eq }
   | '&'                    { Token.Ampersand }
+  | "|="                   { Token.Bar_eq }
   | '|'                    { Token.Bar }
+  | "^="                   { Token.Caret_eq }
   | '^'                    { Token.Caret }
+  | "<<="                  { Token.Left_chevron_eq }
   | "<<"                   { Token.Left_chevron }
+  | ">>="                  { Token.Right_chevron_eq }
   | ">>"                   { Token.Right_chevron }
   | "&&"                   { Token.Double_amp }
   | "||"                   { Token.Double_bar }

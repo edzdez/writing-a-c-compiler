@@ -54,6 +54,11 @@ module Expr = struct
         { left : t
         ; right : t
         }
+    | Compound_assign of
+        { op : Binary_op.t
+        ; left : t
+        ; right : t
+        }
   [@@deriving sexp_of]
 end
 

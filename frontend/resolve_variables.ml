@@ -19,21 +19,31 @@ let is_lvalue expr =
   | _ -> false
 ;;
 
+let validate_lvalue expr =
+  match is_lvalue expr with
+  | true -> ()
+  | false ->
+    Error_helpers.raise_error
+      [%string
+        "expected an lvalue, found %{expr |> Located.value |> Ast.Expr.sexp_of_node |> \
+         Sexp.to_string_hum}"]
+      ~position:(Located.location expr |> Source.Location.start_position)
+;;
+
 let rec resolve_expr expr ~vars =
   match Located.value expr with
   | Ast.Expr.Assign { left; right } ->
-    (match is_lvalue left with
-     | false ->
-       Error_helpers.raise_error
-         [%string
-           "expected an lvalue, found %{left |> Located.value |> Ast.Expr.sexp_of_node \
-            |> Sexp.to_string_hum}"]
-         ~position:(Located.location left |> Source.Location.start_position)
-     | true ->
-       Located.create
-         (Ast.Expr.Assign
-            { left = resolve_expr left ~vars; right = resolve_expr right ~vars })
-         ~location:(Located.location expr))
+    validate_lvalue left;
+    Located.create
+      (Ast.Expr.Assign
+         { left = resolve_expr left ~vars; right = resolve_expr right ~vars })
+      ~location:(Located.location expr)
+  | Compound_assign { op; left; right } ->
+    validate_lvalue left;
+    Located.create
+      (Ast.Expr.Compound_assign
+         { op; left = resolve_expr left ~vars; right = resolve_expr right ~vars })
+      ~location:(Located.location expr)
   | Var v ->
     (match Hashtbl.find_or_null vars v with
      | Null ->
