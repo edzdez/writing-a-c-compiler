@@ -37,10 +37,11 @@ rule next = parse
   | '{'                    { Token.Open_brace }
   | '}'                    { Token.Close_brace }
   | ';'                    { Token.Semicolon }
-  | "--"                   { Token.Double_hyphen }
+  | "--"                   { Token.Hyphen_hyphen }
   | "-="                   { Token.Hyphen_eq }
   | '-'                    { Token.Hyphen }
   | '~'                    { Token.Tilde }
+  | "++"                   { Token.Plus_plus }
   | "+="                   { Token.Plus_eq }
   | '+'                    { Token.Plus }
   | "*="                   { Token.Star_eq }

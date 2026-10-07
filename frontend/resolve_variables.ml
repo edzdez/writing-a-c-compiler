@@ -24,9 +24,7 @@ let validate_lvalue expr =
   | true -> ()
   | false ->
     Error_helpers.raise_error
-      [%string
-        "expected an lvalue, found %{expr |> Located.value |> Ast.Expr.sexp_of_node |> \
-         Sexp.to_string_hum}"]
+      [%string "expected an lvalue, found %{Ast.Expr.describe expr}"]
       ~position:(Located.location expr |> Source.Location.start_position)
 ;;
 
@@ -52,9 +50,15 @@ let rec resolve_expr expr ~vars =
          ~position:(Located.location expr |> Source.Location.start_position)
      | This v -> Located.create (Ast.Expr.Var v) ~location:(Located.location expr))
   | Unary { op; expr = inner } ->
-    Located.create
-      (Ast.Expr.Unary { op; expr = resolve_expr inner ~vars })
-      ~location:(Located.location expr)
+    (match Located.value op with
+     | (Pre_incr | Pre_decr | Post_incr | Post_decr) when not (is_lvalue inner) ->
+       Error_helpers.raise_error
+         [%string "expected an lvalue, found %{Ast.Expr.describe inner}"]
+         ~position:(Located.location inner |> Source.Location.start_position)
+     | _ ->
+       Located.create
+         (Ast.Expr.Unary { op; expr = resolve_expr inner ~vars })
+         ~location:(Located.location expr))
   | Binary { op; left; right } ->
     Located.create
       (Ast.Expr.Binary

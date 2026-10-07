@@ -7,6 +7,10 @@ module Unary_op : sig
     | Complement
     | Negate
     | Not
+    | Pre_incr
+    | Pre_decr
+    | Post_incr
+    | Post_decr
   [@@deriving sexp_of]
 end
 
@@ -60,6 +64,8 @@ module Expr : sig
         ; right : t
         }
   [@@deriving sexp_of]
+
+  val describe : t -> string
 end
 
 module Decl : sig

@@ -19,6 +19,7 @@ let lower_unary_op unary_op =
   | Ast.Unary_op.Complement -> Ir.Unary_op.Complement
   | Negate -> Negate
   | Not -> Not
+  | _ -> raise_s [%message "nonstandard unary op" (unary_op : Ast.Unary_op.t)]
 ;;
 
 let lower_binary_op binary_op =
@@ -56,6 +57,14 @@ let jmp_instr_for op tst tgt =
     ~or_:(stack_ fun () -> Ir.Instr.Jnz { tst; tgt }) [@nontail]
 ;;
 
+let incr_instr_for op left dst =
+  match Located.value op with
+  | Ast.Unary_op.Pre_incr | Post_incr ->
+    Ir.Instr.Binary { op = Add; left; right = Constant 1; dst }
+  | Pre_decr | Post_decr -> Ir.Instr.Binary { op = Sub; left; right = Constant 1; dst }
+  | _ -> raise_s [%message "not [--]/[++]"]
+;;
+
 let lower_lvalue expr =
   match Located.value expr with
   | Ast.Expr.Var v -> Ir.Val.Var v
@@ -67,11 +76,27 @@ let rec lower_expr expr ~temp_vars ~temp_lbls ~instrs =
   | Ast.Expr.Const constant -> Ir.Val.Constant constant
   | Var v -> Ir.Val.Var v
   | Unary { op; expr } ->
-    let src = lower_expr expr ~temp_vars ~temp_lbls ~instrs in
-    let dst = Ir.Val.Var [%string "tmp.%{Temp.fresh temp_vars#Int}"] in
-    let op = lower_unary_op op in
-    Vec.push_back instrs (Ir.Instr.Unary { op; src; dst });
-    dst
+    (match Located.value op with
+     | Pre_incr | Pre_decr ->
+       let expr = lower_lvalue expr in
+       let dst = Ir.Val.Var [%string "tmp.%{Temp.fresh temp_vars#Int}"] in
+       Vec.push_back instrs (incr_instr_for op expr dst);
+       Vec.push_back instrs (Ir.Instr.Copy { src = dst; dst = expr });
+       dst
+     | Post_incr | Post_decr ->
+       let expr = lower_lvalue expr in
+       let old = Ir.Val.Var [%string "tmp.%{Temp.fresh temp_vars#Int}"] in
+       let dst = Ir.Val.Var [%string "tmp.%{Temp.fresh temp_vars#Int}"] in
+       Vec.push_back instrs (Ir.Instr.Copy { src = expr; dst = old });
+       Vec.push_back instrs (incr_instr_for op expr dst);
+       Vec.push_back instrs (Ir.Instr.Copy { src = dst; dst = expr });
+       old
+     | _ ->
+       let src = lower_expr expr ~temp_vars ~temp_lbls ~instrs in
+       let dst = Ir.Val.Var [%string "tmp.%{Temp.fresh temp_vars#Int}"] in
+       let op = lower_unary_op op in
+       Vec.push_back instrs (Ir.Instr.Unary { op; src; dst });
+       dst)
   | Binary { op; left; right } ->
     (match Located.value op with
      | And | Or ->

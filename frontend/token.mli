@@ -12,7 +12,7 @@ type t =
   | Close_brace
   | Semicolon
   | Hyphen
-  | Double_hyphen
+  | Hyphen_hyphen
   | Tilde
   | Plus
   | Star
@@ -43,5 +43,6 @@ type t =
   | Caret_eq
   | Left_chevron_eq
   | Right_chevron_eq
+  | Plus_plus
   | Eof
 [@@deriving compare, equal, sexp]

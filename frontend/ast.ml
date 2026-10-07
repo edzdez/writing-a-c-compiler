@@ -7,6 +7,10 @@ module Unary_op = struct
     | Complement
     | Negate
     | Not
+    | Pre_incr
+    | Pre_decr
+    | Post_incr
+    | Post_decr
   [@@deriving sexp_of]
 end
 
@@ -60,6 +64,22 @@ module Expr = struct
         ; right : t
         }
   [@@deriving sexp_of]
+
+  let describe t =
+    match Source.Located.value t with
+    | Const _ -> "an integer constant"
+    | Var _ -> "a variable"
+    | Unary { op; _ } ->
+      (match Source.Located.value op with
+       | Complement | Negate | Not -> "a unary expression"
+       | Pre_incr -> "a prefix increment expression"
+       | Pre_decr -> "a prefix decrement expression"
+       | Post_incr -> "a postfix increment expression"
+       | Post_decr -> "a postfix decrement expression")
+    | Binary _ -> "a binary expression"
+    | Assign _ -> "an assignment expression"
+    | Compound_assign _ -> "a compound assignment expression"
+  ;;
 end
 
 module Decl = struct

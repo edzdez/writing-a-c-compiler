@@ -16,13 +16,23 @@ let expect token_stream expected =
     raise_error actual ~expected:(expected |> Token.sexp_of_t |> Sexp.to_string_hum)
 ;;
 
-let parse_unary_op token_stream =
+let parse_prefix_unary_op token_stream =
   let token = Token_stream.pop token_stream in
   match Located.value token with
   | Hyphen -> Located.create Unary_op.Negate ~location:(Located.location token)
   | Tilde -> Located.create Unary_op.Complement ~location:(Located.location token)
   | Bang -> Located.create Unary_op.Not ~location:(Located.location token)
-  | _ -> raise_error token ~expected:"a unary operator"
+  | Plus_plus -> Located.create Unary_op.Pre_incr ~location:(Located.location token)
+  | Hyphen_hyphen -> Located.create Unary_op.Pre_decr ~location:(Located.location token)
+  | _ -> raise_error token ~expected:"a prefix unary operator"
+;;
+
+let parse_postfix_unary_op token_stream =
+  let token = Token_stream.pop token_stream in
+  match Located.value token with
+  | Plus_plus -> Located.create Unary_op.Post_incr ~location:(Located.location token)
+  | Hyphen_hyphen -> Located.create Unary_op.Post_decr ~location:(Located.location token)
+  | _ -> raise_error token ~expected:"a postfix unary operator"
 ;;
 
 let precedence bin_op =
@@ -144,19 +154,37 @@ let rec parse_expr token_stream ~min_precedence =
 and parse_factor token_stream =
   let token = Token_stream.peek token_stream ~distance:0 in
   match Located.value token with
+  | Plus_plus | Hyphen_hyphen | Hyphen | Tilde | Bang ->
+    let op = parse_prefix_unary_op token_stream in
+    let expr = parse_factor token_stream in
+    let location =
+      Source.Location.between (Located.location op) (Located.location expr)
+    in
+    Located.create (Expr.Unary { op; expr }) ~location
+  | _ ->
+    let mutable expr = parse_primary token_stream in
+    while
+      match Source.Located.value (Token_stream.peek token_stream ~distance:0) with
+      | Plus_plus | Hyphen_hyphen -> true
+      | _ -> false
+    do
+      let op = parse_postfix_unary_op token_stream in
+      let location =
+        Source.Location.between (Located.location expr) (Located.location op)
+      in
+      expr <- Located.create (Expr.Unary { op; expr }) ~location
+    done;
+    expr
+
+and parse_primary token_stream =
+  let token = Token_stream.peek token_stream ~distance:0 in
+  match Located.value token with
   | Const constant ->
     let _ = Token_stream.pop token_stream in
     Located.create (Expr.Const constant) ~location:(Located.location token)
   | Ident ident ->
     let _ = Token_stream.pop token_stream in
     Located.create (Expr.Var ident) ~location:(Located.location token)
-  | Hyphen | Tilde | Bang ->
-    let op = parse_unary_op token_stream in
-    let expr = parse_factor token_stream in
-    let location =
-      Source.Location.between (Located.location op) (Located.location expr)
-    in
-    Located.create (Expr.Unary { op; expr }) ~location
   | Open_paren ->
     let open_paren = Token_stream.pop token_stream in
     let expr = parse_expr token_stream ~min_precedence:0 in
