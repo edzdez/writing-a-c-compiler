@@ -14,8 +14,13 @@ let parse lexbuf =
   Frontend.Parser.parse token_stream
 ;;
 
-let lower_to_tacky lexbuf = lexbuf |> parse |> Tacky.Lower.program
+let analyze lexbuf = lexbuf |> parse |> Frontend.Semantic_analysis.analyze
+let lower_to_tacky lexbuf = lexbuf |> analyze |> Tacky.Lower.program
 let lower_to_x86 lexbuf = lexbuf |> lower_to_tacky |> X86.Lower.program
+
+let print_ast program =
+  program |> Frontend.Program.ast |> Frontend.Ast.Prog.sexp_of_t |> print_s
+;;
 
 let compile_exn ~stop_after ~input_file ~assembly_file =
   In_channel.with_file input_file ~f:(fun ic ->
@@ -23,9 +28,11 @@ let compile_exn ~stop_after ~input_file ~assembly_file =
     Lexing.set_filename lexbuf input_file;
     match stop_after with
     | Stage.Lex -> lex_to_end lexbuf
-    | Parse -> lexbuf |> parse |> Frontend.Ast.Prog.sexp_of_t |> print_s
+    | Parse -> lexbuf |> parse |> print_ast
+    | Validate -> lexbuf |> analyze |> print_ast
     | Tacky -> lexbuf |> lower_to_tacky |> Tacky.Ir.Prog.sexp_of_t |> print_s
-    | Codegen -> lexbuf |> lower_to_x86 |> X86.Ir.Prog.sexp_of_t |> print_s
+    | Codegen ->
+      lexbuf |> lower_to_x86 |> X86.Program.ir |> X86.Ir.Prog.sexp_of_t |> print_s
     | Emit | Link ->
       let x86 = lower_to_x86 lexbuf in
       Out_channel.with_file assembly_file ~f:(fun writer -> X86.Emit.program x86 ~writer))

@@ -58,5 +58,6 @@ rule next = parse
   | '!'                    { Token.Bang }
   | '<'                    { Token.Lt }
   | '>'                    { Token.Gt }
+  | '='                    { Token.Eq }
   | eof                    { Token.Eof }
   | _                      { raise_error lexbuf }

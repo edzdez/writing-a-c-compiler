@@ -32,5 +32,6 @@ type t =
   | Gt
   | Lte
   | Gte
+  | Eq
   | Eof
 [@@deriving compare, equal, sexp]

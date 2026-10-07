@@ -59,6 +59,7 @@ let jmp_instr_for op tst tgt =
 let rec lower_expr expr ~temp_vars ~temp_lbls ~instrs =
   match Located.value expr with
   | Ast.Expr.Const constant -> Ir.Val.Constant constant
+  | Var v -> Ir.Val.Var v
   | Unary { op; expr } ->
     let src = lower_expr expr ~temp_vars ~temp_lbls ~instrs in
     let dst = Ir.Val.Var [%string "tmp.%{Temp.fresh temp_vars#Int}"] in
@@ -69,7 +70,7 @@ let rec lower_expr expr ~temp_vars ~temp_lbls ~instrs =
     (match Located.value op with
      | And | Or ->
        let tst1 = lower_expr left ~temp_vars ~temp_lbls ~instrs in
-       let fresh_lbl = Temp.fresh temp_vars in
+       let fresh_lbl = Temp.fresh temp_lbls in
        let branch_lbl =
          let branch_lbl_prefix =
            match_and_or
@@ -106,6 +107,21 @@ let rec lower_expr expr ~temp_vars ~temp_lbls ~instrs =
        let op = lower_binary_op op in
        Vec.push_back instrs (Ir.Instr.Binary { op; left; right; dst });
        dst)
+  | Assign { left; right } ->
+    let src = lower_expr right ~temp_vars ~temp_lbls ~instrs in
+    let dst = lower_expr left ~temp_vars ~temp_lbls ~instrs in
+    Vec.push_back instrs (Ir.Instr.Copy { src; dst });
+    dst
+;;
+
+let lower_decl decl ~temp_vars ~temp_lbls ~instrs =
+  let { Ast.Decl.name; init } = Located.value decl in
+  match init with
+  | Null -> ()
+  | This expr ->
+    let src = lower_expr expr ~temp_vars ~temp_lbls ~instrs in
+    let dst = Ir.Val.Var name in
+    Vec.push_back instrs (Ir.Instr.Copy { src; dst })
 ;;
 
 let lower_stmt stmt ~temp_vars ~temp_lbls ~instrs =
@@ -113,12 +129,21 @@ let lower_stmt stmt ~temp_vars ~temp_lbls ~instrs =
   | Ast.Stmt.Return expr ->
     let val_ = lower_expr expr ~temp_vars ~temp_lbls ~instrs in
     Vec.push_back instrs (Ir.Instr.Return val_)
+  | Expr expr -> ignore (lower_expr expr ~temp_vars ~temp_lbls ~instrs)
+  | Null -> ()
+;;
+
+let lower_block_item block_item ~temp_vars ~temp_lbls ~instrs =
+  match Located.value block_item with
+  | Ast.Block_item.Decl decl -> lower_decl decl ~temp_vars ~temp_lbls ~instrs
+  | Stmt stmt -> lower_stmt stmt ~temp_vars ~temp_lbls ~instrs
 ;;
 
 let lower_fun_def fun_def ~temp_vars ~temp_lbls =
   let { Ast.Fun_def.name; body } = Located.value fun_def in
   let instrs = Vec.create () in
-  lower_stmt body ~temp_vars ~temp_lbls ~instrs;
+  Vec.iter body ~f:(lower_block_item ~temp_vars ~temp_lbls ~instrs);
+  Vec.push_back instrs (Ir.Instr.Return (Constant 0));
   { Ir.Fun_def.name; instrs }
 ;;
 

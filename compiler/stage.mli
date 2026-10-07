@@ -3,6 +3,7 @@ open! Core
 type t =
   | Lex
   | Parse
+  | Validate
   | Tacky
   | Codegen
   | Emit
@@ -12,6 +13,7 @@ type t =
 val of_flags
   :  lex:bool
   -> parse:bool
+  -> validate:bool
   -> tacky:bool
   -> codegen:bool
   -> emit:bool

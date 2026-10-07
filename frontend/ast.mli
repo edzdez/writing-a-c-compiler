@@ -40,6 +40,7 @@ module Expr : sig
 
   and node =
     | Const of int
+    | Var of string
     | Unary of
         { op : Unary_op.t
         ; expr : t
@@ -49,12 +50,40 @@ module Expr : sig
         ; left : t
         ; right : t
         }
+    | Assign of
+        { left : t
+        ; right : t
+        }
+  [@@deriving sexp_of]
+end
+
+module Decl : sig
+  type t = node Source.Located.t
+
+  and node =
+    { name : string
+    ; init : Expr.t or_null
+    }
   [@@deriving sexp_of]
 end
 
 module Stmt : sig
   type t = node Source.Located.t
-  and node = Return of Expr.t [@@deriving sexp_of]
+
+  and node =
+    | Return of Expr.t
+    | Expr of Expr.t
+    | Null
+  [@@deriving sexp_of]
+end
+
+module Block_item : sig
+  type t = node Source.Located.t
+
+  and node =
+    | Decl of Decl.t
+    | Stmt of Stmt.t
+  [@@deriving sexp_of]
 end
 
 module Fun_def : sig
@@ -62,7 +91,7 @@ module Fun_def : sig
 
   and node =
     { name : string
-    ; body : Stmt.t
+    ; body : Block_item.t Vec.t
     }
   [@@deriving sexp_of]
 end
