@@ -2,7 +2,7 @@ open! Core
 
 type 'a t =
   { value : 'a
-  ; location : Location.t
+  ; location : (Location.t[@sexp.opaque])
   }
 [@@deriving fields ~getters, sexp_of]
 

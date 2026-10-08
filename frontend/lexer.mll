@@ -12,6 +12,8 @@ let ident_or_keyword lexbuf =
   | "int" -> Token.Int
   | "void" -> Void
   | "return" -> Return
+  | "if" -> If
+  | "else" -> Else
   | ident -> Ident ident
 
 let constant lexbuf =
@@ -70,5 +72,7 @@ rule next = parse
   | '<'                    { Token.Lt }
   | '>'                    { Token.Gt }
   | '='                    { Token.Eq }
+  | '?'                    { Token.Question_mark }
+  | ':'                    { Token.Colon }
   | eof                    { Token.Eof }
   | _                      { raise_error lexbuf }

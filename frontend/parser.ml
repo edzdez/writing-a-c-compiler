@@ -55,6 +55,7 @@ let precedence bin_op =
   | Gt -> 35
   | Lte -> 35
   | Gte -> 35
+  | Question_mark -> 3
   | Eq
   | Plus_eq
   | Hyphen_eq
@@ -115,39 +116,46 @@ let rec parse_expr token_stream ~min_precedence =
   let mutable left = parse_factor token_stream in
   let mutable token = Located.value (Token_stream.peek token_stream ~distance:0) in
   while precedence token >= min_precedence do
-    match token with
-    | Eq
-    | Plus_eq
-    | Hyphen_eq
-    | Star_eq
-    | Slash_eq
-    | Percent_eq
-    | Amp_eq
-    | Bar_eq
-    | Caret_eq
-    | Left_chevron_eq
-    | Right_chevron_eq ->
-      let assignment_op = Token_stream.pop token_stream in
-      let right = parse_expr token_stream ~min_precedence:(precedence token) in
-      let location =
-        Source.Location.between (Located.location left) (Located.location right)
-      in
-      let assignment =
-        match token with
-        | Eq -> Expr.Assign { left; right }
-        | _ ->
-          Expr.Compound_assign { op = compound_assignment_op assignment_op; left; right }
-      in
-      left <- Located.create assignment ~location;
-      token <- Located.value (Token_stream.peek token_stream ~distance:0)
-    | _ ->
-      let op = parse_binary_op token_stream in
-      let right = parse_expr token_stream ~min_precedence:(precedence token + 1) in
-      let location =
-        Source.Location.between (Located.location left) (Located.location right)
-      in
-      left <- Located.create (Expr.Binary { op; left; right }) ~location;
-      token <- Located.value (Token_stream.peek token_stream ~distance:0)
+    (match token with
+     | Eq
+     | Plus_eq
+     | Hyphen_eq
+     | Star_eq
+     | Slash_eq
+     | Percent_eq
+     | Amp_eq
+     | Bar_eq
+     | Caret_eq
+     | Left_chevron_eq
+     | Right_chevron_eq ->
+       let assignment_op = Token_stream.pop token_stream in
+       let right = parse_expr token_stream ~min_precedence:(precedence token) in
+       let location =
+         Source.Location.between (Located.location left) (Located.location right)
+       in
+       let assignment =
+         match token with
+         | Eq -> Expr.Assign { left; right }
+         | _ ->
+           Expr.Compound_assign { op = compound_assignment_op assignment_op; left; right }
+       in
+       left <- Located.create assignment ~location;
+       token <- Located.value (Token_stream.peek token_stream ~distance:0)
+     | Question_mark ->
+       let then_ = parse_conditional_then token_stream in
+       let else_ = parse_expr token_stream ~min_precedence:(precedence token) in
+       let location =
+         Source.Location.between (Located.location left) (Located.location else_)
+       in
+       left <- Located.create (Expr.Conditional { cond = left; then_; else_ }) ~location
+     | _ ->
+       let op = parse_binary_op token_stream in
+       let right = parse_expr token_stream ~min_precedence:(precedence token + 1) in
+       let location =
+         Source.Location.between (Located.location left) (Located.location right)
+       in
+       left <- Located.create (Expr.Binary { op; left; right }) ~location);
+    token <- Located.value (Token_stream.peek token_stream ~distance:0)
   done;
   left
 
@@ -194,6 +202,12 @@ and parse_primary token_stream =
     in
     Located.create (Located.value expr) ~location
   | _ -> raise_error token ~expected:"an integer constant"
+
+and parse_conditional_then token_stream =
+  let _ = expect token_stream Question_mark in
+  let expr = parse_expr token_stream ~min_precedence:0 in
+  let _ = expect token_stream Colon in
+  expr
 ;;
 
 let parse_decl token_stream =
@@ -223,7 +237,7 @@ let parse_decl token_stream =
   | _ -> raise_error token ~expected:"Eq or Semicolon"
 ;;
 
-let parse_stmt token_stream =
+let rec parse_stmt token_stream =
   let token = Token_stream.peek token_stream ~distance:0 in
   match Located.value token with
   | Return ->
@@ -237,6 +251,26 @@ let parse_stmt token_stream =
   | Semicolon ->
     let semicolon = expect token_stream Semicolon in
     Located.create Stmt.Null ~location:(Located.location semicolon)
+  | If ->
+    let if_ = expect token_stream If in
+    let _ = expect token_stream Open_paren in
+    let cond = parse_expr token_stream ~min_precedence:0 in
+    let _ = expect token_stream Close_paren in
+    let then_ = parse_stmt token_stream in
+    let token = Token_stream.peek token_stream ~distance:0 in
+    (match Located.value token with
+     | Else ->
+       let _ = expect token_stream Else in
+       let else_ = parse_stmt token_stream in
+       let location =
+         Source.Location.between (Located.location if_) (Located.location else_)
+       in
+       Located.create (Stmt.If { cond; then_; else_ = This else_ }) ~location
+     | _ ->
+       let location =
+         Source.Location.between (Located.location if_) (Located.location then_)
+       in
+       Located.create (Stmt.If { cond; then_; else_ = Null }) ~location)
   | _ ->
     let expr = parse_expr token_stream ~min_precedence:0 in
     let semicolon = expect token_stream Semicolon in

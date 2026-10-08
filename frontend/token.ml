@@ -44,5 +44,9 @@ type t =
   | Left_chevron_eq
   | Right_chevron_eq
   | Plus_plus
+  | If
+  | Else
+  | Question_mark
+  | Colon
   | Eof
 [@@deriving compare, equal, sexp]

@@ -63,6 +63,11 @@ module Expr : sig
         ; left : t
         ; right : t
         }
+    | Conditional of
+        { cond : t
+        ; then_ : t
+        ; else_ : t
+        }
   [@@deriving sexp_of]
 
   val describe : t -> string
@@ -84,6 +89,11 @@ module Stmt : sig
   and node =
     | Return of Expr.t
     | Expr of Expr.t
+    | If of
+        { cond : Expr.t
+        ; then_ : t
+        ; else_ : t or_null
+        }
     | Null
   [@@deriving sexp_of]
 end

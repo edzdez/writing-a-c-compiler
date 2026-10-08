@@ -151,6 +151,21 @@ let rec lower_expr expr ~temp_vars ~temp_lbls ~instrs =
     Vec.push_back instrs (Ir.Instr.Binary { op; left = dst; right; dst = result });
     Vec.push_back instrs (Ir.Instr.Copy { src = result; dst });
     result
+  | Conditional { cond; then_; else_ } ->
+    let tst = lower_expr cond ~temp_vars ~temp_lbls ~instrs in
+    let dst = Ir.Val.Var [%string "tmp.%{Temp.fresh temp_vars#Int}"] in
+    let fresh_lbl = Temp.fresh temp_lbls in
+    let else_lbl = [%string "cond_else.%{fresh_lbl#Int}"] in
+    let end_lbl = [%string "cond_end.%{fresh_lbl#Int}"] in
+    Vec.push_back instrs (Ir.Instr.Jz { tst; tgt = else_lbl });
+    let then_result = lower_expr then_ ~temp_vars ~temp_lbls ~instrs in
+    Vec.push_back instrs (Ir.Instr.Copy { dst; src = then_result });
+    Vec.push_back instrs (Ir.Instr.Jmp end_lbl);
+    Vec.push_back instrs (Ir.Instr.Label else_lbl);
+    let else_result = lower_expr else_ ~temp_vars ~temp_lbls ~instrs in
+    Vec.push_back instrs (Ir.Instr.Copy { dst; src = else_result });
+    Vec.push_back instrs (Ir.Instr.Label end_lbl);
+    dst
 ;;
 
 let lower_decl decl ~temp_vars ~temp_lbls ~instrs =
@@ -163,12 +178,27 @@ let lower_decl decl ~temp_vars ~temp_lbls ~instrs =
     Vec.push_back instrs (Ir.Instr.Copy { src; dst })
 ;;
 
-let lower_stmt stmt ~temp_vars ~temp_lbls ~instrs =
+let rec lower_stmt stmt ~temp_vars ~temp_lbls ~instrs =
   match Located.value stmt with
   | Ast.Stmt.Return expr ->
     let val_ = lower_expr expr ~temp_vars ~temp_lbls ~instrs in
     Vec.push_back instrs (Ir.Instr.Return val_)
   | Expr expr -> ignore (lower_expr expr ~temp_vars ~temp_lbls ~instrs)
+  | If { cond; then_; else_ } ->
+    let tst = lower_expr cond ~temp_vars ~temp_lbls ~instrs in
+    let fresh_lbl = Temp.fresh temp_lbls in
+    let else_lbl = [%string "if_else.%{fresh_lbl#Int}"] in
+    let end_lbl = [%string "if_end.%{fresh_lbl#Int}"] in
+    Vec.push_back
+      instrs
+      (Ir.Instr.Jz
+         { tst; tgt = Or_null.value_map else_ ~default:end_lbl ~f:(const else_lbl) });
+    lower_stmt then_ ~temp_vars ~temp_lbls ~instrs;
+    Or_null.iter else_ ~f:(stack_ fun else_ ->
+      Vec.push_back instrs (Ir.Instr.Jmp end_lbl);
+      Vec.push_back instrs (Ir.Instr.Label else_lbl);
+      lower_stmt else_ ~temp_vars ~temp_lbls ~instrs);
+    Vec.push_back instrs (Ir.Instr.Label end_lbl)
   | Null -> ()
 ;;
 

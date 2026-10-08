@@ -42,6 +42,14 @@ let rec resolve_expr expr ~vars =
       (Ast.Expr.Compound_assign
          { op; left = resolve_expr left ~vars; right = resolve_expr right ~vars })
       ~location:(Located.location expr)
+  | Conditional { cond; then_; else_ } ->
+    Located.create
+      (Ast.Expr.Conditional
+         { cond = resolve_expr cond ~vars
+         ; then_ = resolve_expr then_ ~vars
+         ; else_ = resolve_expr else_ ~vars
+         })
+      ~location:(Located.location expr)
   | Var v ->
     (match Hashtbl.find_or_null vars v with
      | Null ->
@@ -81,7 +89,7 @@ let resolve_decl decl ~vars ~temp_vars =
     Located.create { Ast.Decl.name = unique_name; init } ~location:(Located.location decl)
 ;;
 
-let resolve_stmt stmt ~vars =
+let rec resolve_stmt stmt ~vars =
   match Located.value stmt with
   | Ast.Stmt.Return expr ->
     Located.create
@@ -90,6 +98,14 @@ let resolve_stmt stmt ~vars =
   | Expr expr ->
     Located.create
       (Ast.Stmt.Expr (resolve_expr expr ~vars))
+      ~location:(Located.location stmt)
+  | If { cond; then_; else_ } ->
+    Located.create
+      (Ast.Stmt.If
+         { cond = resolve_expr cond ~vars
+         ; then_ = resolve_stmt then_ ~vars
+         ; else_ = Or_null.map else_ ~f:(resolve_stmt ~vars)
+         })
       ~location:(Located.location stmt)
   | Null -> stmt
 ;;

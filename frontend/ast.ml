@@ -63,6 +63,11 @@ module Expr = struct
         ; left : t
         ; right : t
         }
+    | Conditional of
+        { cond : t
+        ; then_ : t
+        ; else_ : t
+        }
   [@@deriving sexp_of]
 
   let describe t =
@@ -79,6 +84,7 @@ module Expr = struct
     | Binary _ -> "a binary expression"
     | Assign _ -> "an assignment expression"
     | Compound_assign _ -> "a compound assignment expression"
+    | Conditional _ -> "a conditional expression"
   ;;
 end
 
@@ -98,6 +104,11 @@ module Stmt = struct
   and node =
     | Return of Expr.t
     | Expr of Expr.t
+    | If of
+        { cond : Expr.t
+        ; then_ : t
+        ; else_ : t or_null
+        }
     | Null
   [@@deriving sexp_of]
 end
