@@ -7,6 +7,7 @@ type t =
   | Tacky
   | Codegen
   | Emit
+  | Assemble
   | Link
 [@@deriving compare, equal, sexp]
 
@@ -17,4 +18,5 @@ val of_flags
   -> tacky:bool
   -> codegen:bool
   -> emit:bool
+  -> assemble:bool
   -> t Or_error.t

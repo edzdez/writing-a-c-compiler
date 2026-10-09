@@ -33,7 +33,7 @@ let compile_exn ~stop_after ~input_file ~assembly_file =
     | Tacky -> lexbuf |> lower_to_tacky |> Tacky.Ir.Prog.sexp_of_t |> print_s
     | Codegen ->
       lexbuf |> lower_to_x86 |> X86.Program.ir |> X86.Ir.Prog.sexp_of_t |> print_s
-    | Emit | Link ->
+    | Emit | Assemble | Link ->
       let x86 = lower_to_x86 lexbuf in
       Out_channel.with_file assembly_file ~f:(fun writer -> X86.Emit.program x86 ~writer))
 ;;

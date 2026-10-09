@@ -7,10 +7,11 @@ type t =
   | Tacky
   | Codegen
   | Emit
+  | Assemble
   | Link
 [@@deriving compare, equal, sexp]
 
-let of_flags ~lex ~parse ~validate ~tacky ~codegen ~emit =
+let of_flags ~lex ~parse ~validate ~tacky ~codegen ~emit ~assemble =
   match
     List.filter_opt
       [ Option.some_if lex Lex
@@ -18,6 +19,7 @@ let of_flags ~lex ~parse ~validate ~tacky ~codegen ~emit =
       ; Option.some_if validate Validate
       ; Option.some_if tacky Tacky
       ; Option.some_if codegen Codegen
+      ; Option.some_if assemble Assemble
       ; Option.some_if emit Emit
       ]
   with
