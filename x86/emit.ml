@@ -63,7 +63,7 @@ let instr instr ~writer =
   | Cdq -> Out_channel.output_line writer [%string "\tcdq"]
   | Jmp tgt -> Out_channel.output_line writer [%string "\tjmp \t.L%{tgt}"]
   | Jmp_cc { cc; tgt } ->
-    Out_channel.output_line writer [%string "\tj%{cond_code cc} \t.L%{tgt}"]
+    Out_channel.output_line writer [%string "\tj%{cond_code cc}  \t.L%{tgt}"]
   | Set_cc { cc; dst } ->
     Out_channel.output_line writer [%string "\tset%{cond_code cc}\t%{operand dst}"]
   | Label lbl -> Out_channel.output_line writer [%string ".L%{lbl}:"]

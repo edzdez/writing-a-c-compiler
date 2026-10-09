@@ -223,7 +223,7 @@ let parse_decl token_stream =
     | _ -> raise_error token ~expected:"an identifier"
   in
   let token = Token_stream.peek token_stream ~distance:0 in
-  match Source.Located.value token with
+  match Located.value token with
   | Eq ->
     ignore (Token_stream.pop token_stream);
     let init = parse_expr token_stream ~min_precedence:0 in
@@ -239,6 +239,41 @@ let parse_decl token_stream =
     in
     Located.create { Decl.name; init = Null } ~location
   | _ -> raise_error token ~expected:"Eq or Semicolon"
+;;
+
+let parse_for_init token_stream =
+  let token = Token_stream.peek token_stream ~distance:0 in
+  match Located.value token with
+  | Int ->
+    let decl = parse_decl token_stream in
+    Located.map decl ~f:(stack_ fun _ -> For_init.Decl decl) [@nontail]
+  | Semicolon ->
+    ignore (Token_stream.pop token_stream);
+    Located.map token ~f:(stack_ fun _ -> For_init.Expr Null) [@nontail]
+  | _ ->
+    let expr = parse_expr token_stream ~min_precedence:0 in
+    ignore (expect token_stream Semicolon);
+    Located.map expr ~f:(stack_ fun _ -> For_init.Expr (This expr)) [@nontail]
+;;
+
+let parse_for_control token_stream =
+  ignore (expect token_stream Open_paren);
+  let init = parse_for_init token_stream in
+  let cond =
+    match Located.value (Token_stream.peek token_stream ~distance:0) with
+    | Semicolon -> Null
+    | _ ->
+      let expr = parse_expr token_stream ~min_precedence:0 in
+      This expr
+  in
+  ignore (expect token_stream Semicolon);
+  let post =
+    match Located.value (Token_stream.peek token_stream ~distance:0) with
+    | Close_paren -> Null
+    | _ -> This (parse_expr token_stream ~min_precedence:0)
+  in
+  ignore (expect token_stream Close_paren);
+  #(~init, ~cond, ~post)
 ;;
 
 let rec parse_stmt token_stream =
@@ -300,6 +335,50 @@ let rec parse_stmt token_stream =
   | Open_brace ->
     let block = parse_block token_stream in
     Located.map block ~f:(stack_ fun _ -> Ast.Stmt.Compound block) [@nontail]
+  | Break ->
+    ignore (Token_stream.pop token_stream);
+    let semicolon = expect token_stream Semicolon in
+    let location =
+      Source.Location.between (Located.location token) (Located.location semicolon)
+    in
+    Located.create (Stmt.Break "DUMMY") ~location
+  | Continue ->
+    ignore (Token_stream.pop token_stream);
+    let semicolon = expect token_stream Semicolon in
+    let location =
+      Source.Location.between (Located.location token) (Located.location semicolon)
+    in
+    Located.create (Stmt.Continue "DUMMY") ~location
+  | While ->
+    ignore (Token_stream.pop token_stream);
+    ignore (expect token_stream Open_paren);
+    let cond = parse_expr token_stream ~min_precedence:0 in
+    ignore (expect token_stream Close_paren);
+    let body = parse_stmt token_stream in
+    let location =
+      Source.Location.between (Located.location token) (Located.location body)
+    in
+    Located.create (Stmt.While { cond; body; id = "DUMMY" }) ~location
+  | Do ->
+    ignore (Token_stream.pop token_stream);
+    let body = parse_stmt token_stream in
+    ignore (expect token_stream While);
+    ignore (expect token_stream Open_paren);
+    let cond = parse_expr token_stream ~min_precedence:0 in
+    ignore (expect token_stream Close_paren);
+    let semicolon = expect token_stream Semicolon in
+    let location =
+      Source.Location.between (Located.location token) (Located.location semicolon)
+    in
+    Located.create (Stmt.Do_while { body; cond; id = "DUMMY" }) ~location
+  | For ->
+    ignore (Token_stream.pop token_stream);
+    let #(~init, ~cond, ~post) = parse_for_control token_stream in
+    let body = parse_stmt token_stream in
+    let location =
+      Source.Location.between (Located.location token) (Located.location body)
+    in
+    Located.create (Stmt.For { init; cond; post; body; id = "DUMMY" }) ~location
   | _ ->
     let expr = parse_expr token_stream ~min_precedence:0 in
     let semicolon = expect token_stream Semicolon in
@@ -309,7 +388,7 @@ let rec parse_stmt token_stream =
     Located.create (Stmt.Expr expr) ~location
 
 and parse_block_item token_stream =
-  match Source.Located.value (Token_stream.peek token_stream ~distance:0) with
+  match Located.value (Token_stream.peek token_stream ~distance:0) with
   | Int ->
     let decl = parse_decl token_stream in
     Located.create (Block_item.Decl decl) ~location:(Located.location decl)

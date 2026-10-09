@@ -75,6 +75,13 @@ let resolve_decl decl ~env =
     [@nontail]
 ;;
 
+let resolve_for_init for_init ~env =
+  Located.map for_init ~f:(stack_ function
+    | Ast.For_init.Decl decl -> Ast.For_init.Decl (resolve_decl decl ~env)
+    | Expr expr -> Expr (Or_null.map expr ~f:(stack_ fun expr -> resolve_expr expr ~env)))
+    [@nontail]
+;;
+
 let rec resolve_stmt stmt ~env =
   match Located.value stmt with
   | Ast.Stmt.Return expr ->
@@ -98,7 +105,32 @@ let rec resolve_stmt stmt ~env =
   | Compound block ->
     Located.map block ~f:(stack_ fun _ -> Ast.Stmt.Compound (resolve_block block ~env))
     [@nontail]
-  | Goto _ | Null -> stmt
+  | While { cond; body; id } ->
+    Located.map stmt ~f:(stack_ fun _ ->
+      Ast.Stmt.While { cond = resolve_expr cond ~env; body = resolve_stmt body ~env; id })
+    [@nontail]
+  | Do_while { body; cond; id } ->
+    Located.map stmt ~f:(stack_ fun _ ->
+      Ast.Stmt.Do_while
+        { body = resolve_stmt body ~env; cond = resolve_expr cond ~env; id })
+    [@nontail]
+  | For { init; cond; post; body; id } ->
+    Located.map stmt ~f:(stack_ fun _ ->
+      Variable_env.open_scope env;
+      let init = resolve_for_init init ~env in
+      let for_ =
+        Ast.Stmt.For
+          { init
+          ; cond = Or_null.map cond ~f:(stack_ fun cond -> resolve_expr cond ~env)
+          ; post = Or_null.map post ~f:(stack_ fun post -> resolve_expr post ~env)
+          ; body = resolve_stmt body ~env
+          ; id
+          }
+      in
+      Variable_env.close_scope env;
+      for_)
+    [@nontail]
+  | Break _ | Continue _ | Goto _ | Null -> stmt
 
 and resolve_block_item block_item ~env =
   Located.map block_item ~f:(stack_ function

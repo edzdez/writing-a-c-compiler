@@ -83,6 +83,15 @@ module Decl : sig
   [@@deriving sexp_of]
 end
 
+module For_init : sig
+  type t = node Source.Located.t
+
+  and node =
+    | Decl of Decl.t
+    | Expr of Expr.t or_null
+  [@@deriving sexp_of]
+end
+
 module rec Stmt : sig
   type t = node Source.Located.t
 
@@ -100,6 +109,25 @@ module rec Stmt : sig
         }
     | Goto of string
     | Compound of Block.t
+    | Break of string
+    | Continue of string
+    | While of
+        { cond : Expr.t
+        ; body : t
+        ; id : string
+        }
+    | Do_while of
+        { body : t
+        ; cond : Expr.t
+        ; id : string
+        }
+    | For of
+        { init : For_init.t
+        ; cond : Expr.t or_null
+        ; post : Expr.t or_null
+        ; body : t
+        ; id : string
+        }
     | Null
   [@@deriving sexp_of]
 end

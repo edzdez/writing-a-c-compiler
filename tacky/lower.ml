@@ -28,6 +28,9 @@ module Builder = struct
      , ~end_:[%string "%{end_prefix}.%{id#Int}"] )
   ;;
 
+  let loop_start_label loop_id = [%string "start.%{loop_id}"]
+  let break_label loop_id = [%string "break.%{loop_id}"]
+  let continue_label loop_id = [%string "continue.%{loop_id}"]
   let finish t = t.instructions
 end
 
@@ -191,6 +194,13 @@ let lower_decl decl ~builder =
     Builder.emit builder (Ir.Instr.Copy { src; dst })
 ;;
 
+let lower_for_init for_init ~builder =
+  match Located.value for_init with
+  | Ast.For_init.Decl decl -> lower_decl decl ~builder
+  | Expr expr ->
+    Or_null.iter expr ~f:(stack_ fun expr -> ignore (lower_expr expr ~builder)) [@nontail]
+;;
+
 let rec lower_stmt stmt ~builder =
   match Located.value stmt with
   | Ast.Stmt.Return expr ->
@@ -217,6 +227,34 @@ let rec lower_stmt stmt ~builder =
     lower_stmt stmt ~builder
   | Compound block -> lower_block block ~builder
   | Goto lbl -> Builder.emit builder (Ir.Instr.Jmp lbl)
+  | Break loop_id -> Builder.emit builder (Ir.Instr.Jmp (Builder.break_label loop_id))
+  | Continue loop_id ->
+    Builder.emit builder (Ir.Instr.Jmp (Builder.continue_label loop_id))
+  | While { cond; body; id } ->
+    Builder.emit builder (Ir.Instr.Label (Builder.continue_label id));
+    let tst = lower_expr cond ~builder in
+    Builder.emit builder (Ir.Instr.Jz { tst; tgt = Builder.break_label id });
+    lower_stmt body ~builder;
+    Builder.emit builder (Ir.Instr.Jmp (Builder.continue_label id));
+    Builder.emit builder (Ir.Instr.Label (Builder.break_label id))
+  | Do_while { body; cond; id } ->
+    Builder.emit builder (Ir.Instr.Label (Builder.loop_start_label id));
+    lower_stmt body ~builder;
+    Builder.emit builder (Ir.Instr.Label (Builder.continue_label id));
+    let tst = lower_expr cond ~builder in
+    Builder.emit builder (Ir.Instr.Jnz { tst; tgt = Builder.loop_start_label id });
+    Builder.emit builder (Ir.Instr.Label (Builder.break_label id))
+  | For { init; cond; post; body; id } ->
+    lower_for_init init ~builder;
+    Builder.emit builder (Ir.Instr.Label (Builder.loop_start_label id));
+    Or_null.iter cond ~f:(stack_ fun cond ->
+      let tst = lower_expr cond ~builder in
+      Builder.emit builder (Ir.Instr.Jz { tst; tgt = Builder.break_label id }));
+    lower_stmt body ~builder;
+    Builder.emit builder (Ir.Instr.Label (Builder.continue_label id));
+    Or_null.iter post ~f:(stack_ fun post -> ignore (lower_expr post ~builder));
+    Builder.emit builder (Ir.Instr.Jmp (Builder.loop_start_label id));
+    Builder.emit builder (Ir.Instr.Label (Builder.break_label id))
   | Null -> ()
 
 and lower_block_item block_item ~builder =

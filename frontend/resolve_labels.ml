@@ -24,7 +24,10 @@ let gather_labels body =
         | Decl _ -> ()
         | Stmt stmt -> gather_labels stmt)
       [@nontail]
-    | Return _ | Expr _ | Goto _ | Null -> ()
+    | While { cond; body; id } -> gather_labels body
+    | Do_while { body; cond; id } -> gather_labels body
+    | For { init; cond; post; body; id } -> gather_labels body
+    | Break _ | Continue _ | Return _ | Expr _ | Goto _ | Null -> ()
   in
   Vec.iter body ~f:(stack_ fun block_item ->
     match Located.value block_item with
@@ -55,7 +58,19 @@ let rec resolve_stmt stmt ~labels =
   | Compound block ->
     Located.map block ~f:(stack_ fun _ -> Ast.Stmt.Compound (resolve_block block ~labels))
     [@nontail]
-  | Return _ | Expr _ | Null -> stmt
+  | While { cond; body; id } ->
+    Located.map stmt ~f:(stack_ fun _ ->
+      Ast.Stmt.While { cond; body = resolve_stmt body ~labels; id })
+    [@nontail]
+  | Do_while { body; cond; id } ->
+    Located.map stmt ~f:(stack_ fun _ ->
+      Ast.Stmt.Do_while { body = resolve_stmt body ~labels; cond; id })
+    [@nontail]
+  | For { init; cond; post; body; id } ->
+    Located.map stmt ~f:(stack_ fun _ ->
+      Ast.Stmt.For { init; cond; post; body = resolve_stmt body ~labels; id })
+    [@nontail]
+  | Break _ | Continue _ | Return _ | Expr _ | Null -> stmt
 
 and resolve_block_item block_item ~labels =
   match Located.value block_item with

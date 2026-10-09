@@ -15,6 +15,11 @@ let ident_or_keyword lexbuf =
   | "if" -> If
   | "else" -> Else
   | "goto" -> Goto
+  | "do" -> Do
+  | "while" -> While
+  | "for" -> For
+  | "break" -> Break
+  | "continue" -> Continue
   | ident -> Ident ident
 
 let constant lexbuf =

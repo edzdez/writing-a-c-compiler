@@ -49,5 +49,10 @@ type t =
   | Question_mark
   | Colon
   | Goto
+  | Do
+  | While
+  | For
+  | Break
+  | Continue
   | Eof
 [@@deriving compare, equal, sexp]
