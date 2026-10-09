@@ -48,5 +48,6 @@ type t =
   | Else
   | Question_mark
   | Colon
+  | Goto
   | Eof
 [@@deriving compare, equal, sexp]

@@ -201,7 +201,7 @@ and parse_primary token_stream =
       Source.Location.between (Located.location open_paren) (Located.location close_paren)
     in
     Located.create (Located.value expr) ~location
-  | _ -> raise_error token ~expected:"an integer constant"
+  | _ -> raise_error token ~expected:"a statement"
 
 and parse_conditional_then token_stream =
   let _ = expect token_stream Question_mark in
@@ -271,6 +271,28 @@ let rec parse_stmt token_stream =
          Source.Location.between (Located.location if_) (Located.location then_)
        in
        Located.create (Stmt.If { cond; then_; else_ = Null }) ~location)
+  | Goto ->
+    let _ = expect token_stream Goto in
+    let label =
+      let token = Token_stream.pop token_stream in
+      match Located.value token with
+      | Ident name -> name
+      | _ -> raise_error token ~expected:"an identifier"
+    in
+    let semicolon = expect token_stream Semicolon in
+    let location =
+      Source.Location.between (Located.location token) (Located.location semicolon)
+    in
+    Located.create (Stmt.Goto label) ~location
+  | Ident lbl
+    when Token.equal (Located.value (Token_stream.peek token_stream ~distance:1)) Colon ->
+    let _ = Token_stream.pop token_stream in
+    let colon = expect token_stream Colon in
+    let stmt = parse_stmt token_stream in
+    let location =
+      Source.Location.between (Located.location token) (Located.location colon)
+    in
+    Located.create (Stmt.Label { lbl; stmt }) ~location
   | _ ->
     let expr = parse_expr token_stream ~min_precedence:0 in
     let semicolon = expect token_stream Semicolon in

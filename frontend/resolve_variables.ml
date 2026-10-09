@@ -107,7 +107,11 @@ let rec resolve_stmt stmt ~vars =
          ; else_ = Or_null.map else_ ~f:(resolve_stmt ~vars)
          })
       ~location:(Located.location stmt)
-  | Null -> stmt
+  | Label { lbl; stmt = inner } ->
+    Located.create
+      (Ast.Stmt.Label { lbl; stmt = resolve_stmt inner ~vars })
+      ~location:(Located.location stmt)
+  | Goto _ | Null -> stmt
 ;;
 
 let resolve_block_item block_item ~vars ~temp_vars =

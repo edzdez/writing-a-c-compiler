@@ -14,6 +14,7 @@ let ident_or_keyword lexbuf =
   | "return" -> Return
   | "if" -> If
   | "else" -> Else
+  | "goto" -> Goto
   | ident -> Ident ident
 
 let constant lexbuf =

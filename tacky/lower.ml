@@ -199,6 +199,10 @@ let rec lower_stmt stmt ~temp_vars ~temp_lbls ~instrs =
       Vec.push_back instrs (Ir.Instr.Label else_lbl);
       lower_stmt else_ ~temp_vars ~temp_lbls ~instrs);
     Vec.push_back instrs (Ir.Instr.Label end_lbl)
+  | Label { lbl; stmt } ->
+    Vec.push_back instrs (Ir.Instr.Label lbl);
+    lower_stmt stmt ~temp_vars ~temp_lbls ~instrs
+  | Goto lbl -> Vec.push_back instrs (Ir.Instr.Jmp lbl)
   | Null -> ()
 ;;
 

@@ -94,6 +94,11 @@ module Stmt : sig
         ; then_ : t
         ; else_ : t or_null
         }
+    | Label of
+        { lbl : string
+        ; stmt : t
+        }
+    | Goto of string
     | Null
   [@@deriving sexp_of]
 end

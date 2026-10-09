@@ -1,3 +1,3 @@
 open! Core
 
-let analyze = Resolve_variables.program
+let analyze program = program |> Resolve_variables.program |> Resolve_labels.program
