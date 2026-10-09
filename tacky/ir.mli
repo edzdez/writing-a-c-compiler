@@ -70,7 +70,7 @@ end
 module Fun_def : sig
   type t =
     { name : string
-    ; instrs : Instr.t Vec.t
+    ; instrs : Instr.t iarray
     }
   [@@deriving sexp_of]
 end

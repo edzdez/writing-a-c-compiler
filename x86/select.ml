@@ -92,8 +92,8 @@ let instr instr ~instrs =
 
 let fun_def { Tacky.Ir.Fun_def.name; instrs = body } =
   let instrs = Vec.create () in
-  Vec.iter body ~f:(instr ~instrs);
-  { Ir.Fun_def.name; instrs }
+  Iarray.iter body ~f:(instr ~instrs);
+  { Ir.Fun_def.name; instrs = Vec.to_iarray instrs }
 ;;
 
 let program = fun_def

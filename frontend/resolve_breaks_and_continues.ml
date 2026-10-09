@@ -3,8 +3,8 @@ module Located = Source.Located
 
 module Context = struct
   type t =
-    { break_target : string or_null
-    ; continue_target : string or_null
+    { break_target : Ast.Control_id.t or_null
+    ; continue_target : Ast.Control_id.t or_null
     }
 
   let empty = { break_target = Null; continue_target = Null }
@@ -93,10 +93,7 @@ and resolve_block_item block_item ~context =
 
 and resolve_block block ~context =
   Located.map block ~f:(stack_ fun block ->
-    let resolved_block = Vec.create () ~initial_capacity:(Vec.length block) in
-    Vec.iter block ~f:(stack_ fun block_item ->
-      Vec.push_back resolved_block (resolve_block_item block_item ~context));
-    resolved_block)
+    Iarray.map block ~f:(fun block_item -> resolve_block_item block_item ~context))
   [@nontail]
 ;;
 

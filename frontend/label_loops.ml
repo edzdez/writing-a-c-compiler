@@ -5,7 +5,7 @@ module Context = struct
   type t = { fresh_ids : Common.Fresh_id.t }
 
   let create () = { fresh_ids = Common.Fresh_id.create () }
-  let fresh_id t = [%string "loop.%{Common.Fresh_id.fresh t.fresh_ids#Int}"]
+  let fresh_id t = Ast.Control_id.fresh_loop t.fresh_ids
 end
 
 let rec label_stmt stmt ~context =
@@ -64,10 +64,7 @@ and label_block_item block_item ~context =
 
 and label_block block ~context =
   Located.map block ~f:(stack_ fun block ->
-    let labeled_block = Vec.create () ~initial_capacity:(Vec.length block) in
-    Vec.iter block ~f:(stack_ fun block_item ->
-      Vec.push_back labeled_block (label_block_item block_item ~context));
-    labeled_block)
+    Iarray.map block ~f:(fun block_item -> label_block_item block_item ~context))
   [@nontail]
 ;;
 

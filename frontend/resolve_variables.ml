@@ -67,9 +67,9 @@ let rec resolve_expr expr ~env =
 let resolve_decl decl ~env =
   let { Ast.Decl.name = source_name; init } = Located.value decl in
   match Variable_env.declare env ~source_name with
-  | Duplicate ->
+  | `Duplicate ->
     Error_helpers.raise_at decl [%string "duplicate variable declaration %{source_name}"]
-  | Declared resolved_name ->
+  | `Declared resolved_name ->
     let init = Or_null.map init ~f:(resolve_expr ~env) in
     Located.map decl ~f:(stack_ fun _ -> { Ast.Decl.name = resolved_name; init })
     [@nontail]
@@ -154,9 +154,7 @@ and resolve_block_item block_item ~env =
 and resolve_block block ~env =
   Located.map block ~f:(stack_ fun body ->
     Variable_env.open_scope env;
-    let resolved_body = Vec.create () ~initial_capacity:(Vec.length body) in
-    Vec.iter body ~f:(stack_ fun block_item ->
-      Vec.push_back resolved_body (resolve_block_item block_item ~env));
+    let resolved_body = Iarray.map body ~f:(fun item -> resolve_block_item item ~env) in
     Variable_env.close_scope env;
     resolved_body)
   [@nontail]

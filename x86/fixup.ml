@@ -1,8 +1,8 @@
 open! Core
 
 let program { Ir.Fun_def.name; instrs = input } =
-  let instrs = Vec.create ~initial_capacity:(Vec.length input) () in
-  Vec.iter input ~f:(stack_ fun instr ->
+  let instrs = Vec.create ~initial_capacity:(Iarray.length input) () in
+  Iarray.iter input ~f:(stack_ fun instr ->
     match instr with
     | Ir.Instr.Mov { src = Stack _ as src; dst = Stack _ as dst } ->
       Vec.push_back instrs (Ir.Instr.Mov { src; dst = Ir.Operand.Reg `R10 });
@@ -31,5 +31,5 @@ let program { Ir.Fun_def.name; instrs = input } =
       Vec.push_back instrs (Ir.Instr.Mov { src = op; dst = Ir.Operand.Reg `R10 });
       Vec.push_back instrs (Ir.Instr.Idiv (Ir.Operand.Reg `R10))
     | instr -> Vec.push_back instrs instr);
-  { Ir.Fun_def.name; instrs }
+  { Ir.Fun_def.name; instrs = Vec.to_iarray instrs }
 ;;

@@ -107,12 +107,44 @@ module For_init = struct
   [@@deriving sexp_of]
 end
 
+module Control_id = struct
+  type t =
+    | Loop of int
+    | Switch of int
+  [@@deriving sexp_of]
+
+  let fresh_loop fresh_ids = Loop (Common.Fresh_id.fresh fresh_ids)
+  let fresh_switch fresh_ids = Switch (Common.Fresh_id.fresh fresh_ids)
+
+  let to_string = function
+    | Loop id -> [%string "loop.%{id#Int}"]
+    | Switch id -> [%string "switch.%{id#Int}"]
+  ;;
+end
+
 module Switch_cases = struct
   type t =
-    { values : Int.Hash_set.t
-    ; mutable has_default : bool
+    { values : Int.Set.t
+    ; has_default : bool
     }
   [@@deriving sexp_of]
+
+  let empty = { values = Int.Set.empty; has_default = false }
+
+  let add_case t value =
+    match Set.mem t.values value with
+    | true -> `Duplicate
+    | false -> `Added { t with values = Set.add t.values value }
+  ;;
+
+  let add_default t =
+    match t.has_default with
+    | true -> `Duplicate
+    | false -> `Added { t with has_default = true }
+  ;;
+
+  let iter t ~f = Set.iter t.values ~f
+  let has_default t = t.has_default
 end
 
 module rec Stmt : sig
@@ -132,39 +164,39 @@ module rec Stmt : sig
         }
     | Goto of string
     | Compound of Block.t
-    | Break of string or_null
-    | Continue of string or_null
+    | Break of Control_id.t or_null
+    | Continue of Control_id.t or_null
     | While of
         { cond : Expr.t
         ; body : t
-        ; id : string or_null
+        ; id : Control_id.t or_null
         }
     | Do_while of
         { body : t
         ; cond : Expr.t
-        ; id : string or_null
+        ; id : Control_id.t or_null
         }
     | For of
         { init : For_init.t
         ; cond : Expr.t or_null
         ; post : Expr.t or_null
         ; body : t
-        ; id : string or_null
+        ; id : Control_id.t or_null
         }
     | Case of
         { value : Expr.t
         ; body : t
-        ; id : string or_null
+        ; id : Control_id.t or_null
         }
     | Default of
         { body : t
-        ; id : string or_null
+        ; id : Control_id.t or_null
         }
     | Switch of
         { cases : Switch_cases.t
         ; cond : Expr.t
         ; body : t
-        ; id : string or_null
+        ; id : Control_id.t or_null
         }
     | Null
   [@@deriving sexp_of]
@@ -185,39 +217,39 @@ end = struct
         }
     | Goto of string
     | Compound of Block.t
-    | Break of string or_null
-    | Continue of string or_null
+    | Break of Control_id.t or_null
+    | Continue of Control_id.t or_null
     | While of
         { cond : Expr.t
         ; body : t
-        ; id : string or_null
+        ; id : Control_id.t or_null
         }
     | Do_while of
         { body : t
         ; cond : Expr.t
-        ; id : string or_null
+        ; id : Control_id.t or_null
         }
     | For of
         { init : For_init.t
         ; cond : Expr.t or_null
         ; post : Expr.t or_null
         ; body : t
-        ; id : string or_null
+        ; id : Control_id.t or_null
         }
     | Case of
         { value : Expr.t
         ; body : t
-        ; id : string or_null
+        ; id : Control_id.t or_null
         }
     | Default of
         { body : t
-        ; id : string or_null
+        ; id : Control_id.t or_null
         }
     | Switch of
         { cases : Switch_cases.t
         ; cond : Expr.t
         ; body : t
-        ; id : string or_null
+        ; id : Control_id.t or_null
         }
     | Null
   [@@deriving sexp_of]
@@ -241,10 +273,10 @@ end
 
 and Block : sig
   type t = node Source.Located.t
-  and node = Block_item.t Vec.t [@@deriving sexp_of]
+  and node = Block_item.t iarray [@@deriving sexp_of]
 end = struct
   type t = node Source.Located.t
-  and node = Block_item.t Vec.t [@@deriving sexp_of]
+  and node = Block_item.t iarray [@@deriving sexp_of]
 end
 
 module Fun_def = struct

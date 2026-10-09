@@ -28,10 +28,10 @@ module Builder = struct
      , ~end_:[%string "%{end_prefix}.%{id#Int}"] )
   ;;
 
-  let loop_start_label loop_id = [%string "start.%{loop_id}"]
-  let break_label loop_id = [%string "break.%{loop_id}"]
-  let continue_label loop_id = [%string "continue.%{loop_id}"]
-  let finish t = t.instructions
+  let loop_start_label id = [%string "start.%{Ast.Control_id.to_string id}"]
+  let break_label id = [%string "break.%{Ast.Control_id.to_string id}"]
+  let continue_label id = [%string "continue.%{Ast.Control_id.to_string id}"]
+  let finish t = Vec.to_iarray t.instructions
 end
 
 let lower_unary_op unary_op =
@@ -277,7 +277,7 @@ and lower_block_item block_item ~builder =
 
 and lower_block block ~builder =
   let block = Located.value block in
-  Vec.iter block ~f:(stack_ fun block_item -> lower_block_item block_item ~builder)
+  Iarray.iter block ~f:(stack_ fun block_item -> lower_block_item block_item ~builder)
   [@nontail]
 ;;
 

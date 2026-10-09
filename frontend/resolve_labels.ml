@@ -19,7 +19,7 @@ let gather_labels body =
       Or_null.iter else_ ~f:(stack_ fun else_ -> gather_labels else_) [@nontail]
     | Compound block ->
       let block = Located.value block in
-      Vec.iter block ~f:(stack_ fun block_item ->
+      Iarray.iter block ~f:(stack_ fun block_item ->
         match Located.value block_item with
         | Decl _ -> ()
         | Stmt stmt -> gather_labels stmt)
@@ -32,7 +32,7 @@ let gather_labels body =
     | Switch { cases = _; cond = _; body; id = _ } -> gather_labels body
     | Break _ | Continue _ | Return _ | Expr _ | Goto _ | Null -> ()
   in
-  Vec.iter body ~f:(stack_ fun block_item ->
+  Iarray.iter body ~f:(stack_ fun block_item ->
     match Located.value block_item with
     | Ast.Block_item.Stmt stmt -> gather_labels stmt
     | Decl _ -> ());
@@ -97,10 +97,7 @@ and resolve_block_item block_item ~labels =
 
 and resolve_block block ~labels =
   Located.map block ~f:(stack_ fun block ->
-    let resolved_block = Vec.create () ~initial_capacity:(Vec.length block) in
-    Vec.iter block ~f:(stack_ fun block_item ->
-      Vec.push_back resolved_block (resolve_block_item block_item ~labels));
-    resolved_block)
+    Iarray.map block ~f:(fun block_item -> resolve_block_item block_item ~labels))
   [@nontail]
 ;;
 

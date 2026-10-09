@@ -80,7 +80,7 @@ let fun_def { Ir.Fun_def.name; instrs } ~writer =
   Out_channel.output_line writer [%string "%{name}:"];
   Out_channel.output_line writer "\tpushq\t%rbp";
   Out_channel.output_line writer "\tmovq\t%rsp, %rbp";
-  Vec.iter instrs ~f:(instr ~writer)
+  Iarray.iter instrs ~f:(instr ~writer)
 ;;
 
 let program program ~writer =

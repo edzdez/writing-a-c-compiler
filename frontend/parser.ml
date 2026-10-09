@@ -406,12 +406,7 @@ let rec parse_stmt token_stream =
       Source.Location.between (Located.location token) (Located.location body)
     in
     Located.create
-      (Stmt.Switch
-         { cases = { Switch_cases.values = Int.Hash_set.create (); has_default = false }
-         ; cond
-         ; body
-         ; id = Null
-         })
+      (Stmt.Switch { cases = Switch_cases.empty; cond; body; id = Null })
       ~location
   | _ ->
     let expr = parse_expr token_stream ~min_precedence:0 in
@@ -446,7 +441,7 @@ and parse_block token_stream =
   let location =
     Source.Location.between (Located.location open_brace) (Located.location close_brace)
   in
-  Located.create block ~location
+  Located.create (Vec.to_iarray block) ~location
 ;;
 
 let parse_fun_def token_stream =

@@ -1,11 +1,5 @@
 open! Core
 
-module Declaration = struct
-  type t =
-    | Declared of string
-    | Duplicate
-end
-
 type t =
   { mutable vars : string String.Table.t list
   ; fresh_ids : Common.Fresh_id.t
@@ -23,11 +17,11 @@ let declare t ~source_name =
   | [] -> raise_s [%message "no open scopes"]
   | vars :: _ ->
     (match Hashtbl.mem vars source_name with
-     | true -> Declaration.Duplicate
+     | true -> `Duplicate
      | false ->
        let resolved_name = fresh_variable t ~source_name in
        Hashtbl.add_exn vars ~key:source_name ~data:resolved_name;
-       Declared resolved_name)
+       `Declared resolved_name)
 ;;
 
 let find t source_name =

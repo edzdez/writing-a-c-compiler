@@ -4,8 +4,8 @@ module Located = Source.Located
 module Context = struct
   module Switch = struct
     type t =
-      { id : string
-      ; cases : Ast.Switch_cases.t
+      { id : Ast.Control_id.t
+      ; mutable cases : Ast.Switch_cases.t
       }
   end
 
@@ -18,11 +18,9 @@ module Context = struct
   let current_switch t = t.current_switch
 
   let enter_switch t =
-    let id = [%string "switch.%{Common.Fresh_id.fresh t.fresh_ids#Int}"] in
-    let cases =
-      { Ast.Switch_cases.values = Int.Hash_set.create (); has_default = false }
-    in
-    { t with current_switch = This { id; cases } }, id, cases
+    let id = Ast.Control_id.fresh_switch t.fresh_ids in
+    let switch = { Switch.id; cases = Ast.Switch_cases.empty } in
+    { t with current_switch = This switch }, switch
   ;;
 end
 
@@ -42,11 +40,11 @@ let rec label_stmt stmt ~context =
      | Null -> Error_helpers.raise_at stmt [%string "[case] has no enclosing [switch]"]
      | This switch ->
        let case_value = validate_constexpr_value value in
-       (match Hash_set.mem switch.cases.values case_value with
-        | true ->
+       (match Ast.Switch_cases.add_case switch.cases case_value with
+        | `Duplicate ->
           Error_helpers.raise_at stmt [%string "duplicate case value %{case_value#Int}"]
-        | false ->
-          Hash_set.add switch.cases.values case_value;
+        | `Added cases ->
+          switch.cases <- cases;
           Located.map stmt ~f:(stack_ fun _ ->
             Ast.Stmt.Case { value; body = label_stmt body ~context; id = This switch.id })
           [@nontail]))
@@ -54,17 +52,18 @@ let rec label_stmt stmt ~context =
     (match Context.current_switch context with
      | Null -> Error_helpers.raise_at stmt [%string "[default] has no enclosing [switch]"]
      | This switch ->
-       (match switch.cases.has_default with
-        | true -> Error_helpers.raise_at stmt "duplicate [default]"
-        | false ->
-          switch.cases.has_default <- true;
+       (match Ast.Switch_cases.add_default switch.cases with
+        | `Duplicate -> Error_helpers.raise_at stmt "duplicate [default]"
+        | `Added cases ->
+          switch.cases <- cases;
           Located.map stmt ~f:(stack_ fun _ ->
             Ast.Stmt.Default { body = label_stmt body ~context; id = This switch.id })
           [@nontail]))
   | Switch { cases = _; cond; body; id = _ } ->
-    let context, id, cases = Context.enter_switch context in
+    let context, switch = Context.enter_switch context in
+    let body = label_stmt body ~context in
     Located.map stmt ~f:(stack_ fun _ ->
-      Ast.Stmt.Switch { cases; cond; body = label_stmt body ~context; id = This id })
+      Ast.Stmt.Switch { cases = switch.cases; cond; body; id = This switch.id })
     [@nontail]
   | Label { lbl; body } ->
     Located.map stmt ~f:(stack_ fun _ ->
@@ -105,10 +104,7 @@ and label_block_item block_item ~context =
 
 and label_block block ~context =
   Located.map block ~f:(stack_ fun block ->
-    let labeled_block = Vec.create () ~initial_capacity:(Vec.length block) in
-    Vec.iter block ~f:(stack_ fun block_item ->
-      Vec.push_back labeled_block (label_block_item block_item ~context));
-    labeled_block)
+    Iarray.map block ~f:(fun block_item -> label_block_item block_item ~context))
   [@nontail]
 ;;
 

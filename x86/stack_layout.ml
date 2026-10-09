@@ -10,9 +10,9 @@ let program { Ir.Fun_def.name; instrs = input } =
     | Ir.Operand.Pseudo pseudo -> Ir.Operand.Stack (stack_offset pseudo)
     | operand -> operand
   in
-  let instrs = Vec.create ~initial_capacity:(Vec.length input + 1) () in
+  let instrs = Vec.create ~initial_capacity:(Iarray.length input + 1) () in
   Vec.push_back instrs (Ir.Instr.Alloc_stack 0);
-  Vec.iter input ~f:(stack_ fun instr ->
+  Iarray.iter input ~f:(stack_ fun instr ->
     let instr =
       match instr with
       | Ir.Instr.Mov { src; dst } -> Ir.Instr.Mov { src = operand src; dst = operand dst }
@@ -25,5 +25,5 @@ let program { Ir.Fun_def.name; instrs = input } =
     in
     Vec.push_back instrs instr);
   Vec.unsafe_set instrs 0 (Ir.Instr.Alloc_stack (Hashtbl.length stack_slots * 4));
-  { Ir.Fun_def.name; instrs }
+  { Ir.Fun_def.name; instrs = Vec.to_iarray instrs }
 ;;
