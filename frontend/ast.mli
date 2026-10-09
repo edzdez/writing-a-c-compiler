@@ -83,7 +83,7 @@ module Decl : sig
   [@@deriving sexp_of]
 end
 
-module Stmt : sig
+module rec Stmt : sig
   type t = node Source.Located.t
 
   and node =
@@ -99,11 +99,17 @@ module Stmt : sig
         ; stmt : t
         }
     | Goto of string
+    | Compound of Block.t
     | Null
   [@@deriving sexp_of]
 end
 
-module Block_item : sig
+and Block : sig
+  type t = node Source.Located.t
+  and node = Block_item.t Vec.t [@@deriving sexp_of]
+end
+
+and Block_item : sig
   type t = node Source.Located.t
 
   and node =
@@ -117,7 +123,7 @@ module Fun_def : sig
 
   and node =
     { name : string
-    ; body : Block_item.t Vec.t
+    ; body : Block.t
     }
   [@@deriving sexp_of]
 end

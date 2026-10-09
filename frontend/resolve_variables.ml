@@ -47,7 +47,7 @@ let rec resolve_expr expr ~env =
         })
     [@nontail]
   | Var source_name ->
-    (match Variable_environment.find env source_name with
+    (match Variable_env.find env source_name with
      | Null -> Error_helpers.raise_at expr [%string "undeclared variable %{source_name}"]
      | This resolved_name ->
        Located.map expr ~f:(stack_ fun _ -> Ast.Expr.Var resolved_name) [@nontail])
@@ -66,7 +66,7 @@ let rec resolve_expr expr ~env =
 
 let resolve_decl decl ~env =
   let { Ast.Decl.name = source_name; init } = Located.value decl in
-  match Variable_environment.declare env ~source_name with
+  match Variable_env.declare env ~source_name with
   | Duplicate ->
     Error_helpers.raise_at decl [%string "duplicate variable declaration %{source_name}"]
   | Declared resolved_name ->
@@ -95,26 +95,36 @@ let rec resolve_stmt stmt ~env =
     Located.map stmt ~f:(stack_ fun _ ->
       Ast.Stmt.Label { lbl; stmt = resolve_stmt inner ~env })
     [@nontail]
+  | Compound block ->
+    Located.map block ~f:(stack_ fun _ -> Ast.Stmt.Compound (resolve_block block ~env))
+    [@nontail]
   | Goto _ | Null -> stmt
-;;
 
-let resolve_block_item block_item ~env =
+and resolve_block_item block_item ~env =
   Located.map block_item ~f:(stack_ function
     | Ast.Block_item.Decl decl -> Ast.Block_item.Decl (resolve_decl decl ~env)
     | Stmt stmt -> Ast.Block_item.Stmt (resolve_stmt stmt ~env))
     [@nontail]
+
+and resolve_block block ~env =
+  Located.map block ~f:(stack_ fun body ->
+    Variable_env.open_scope env;
+    let resolved_body = Vec.create () ~initial_capacity:(Vec.length body) in
+    Vec.iter body ~f:(stack_ fun block_item ->
+      Vec.push_back resolved_body (resolve_block_item block_item ~env));
+    Variable_env.close_scope env;
+    resolved_body)
+  [@nontail]
 ;;
 
 let resolve_fun_def fun_def ~env =
   Located.map fun_def ~f:(stack_ fun { Ast.Fun_def.name; body } ->
-    let resolved_body = Vec.create () ~initial_capacity:(Vec.length body) in
-    Vec.iter body ~f:(stack_ fun block_item ->
-      Vec.push_back resolved_body (resolve_block_item block_item ~env));
-    { Ast.Fun_def.name; body = resolved_body })
+    let body = resolve_block body ~env in
+    { Ast.Fun_def.name; body })
   [@nontail]
 ;;
 
 let program (prog : Ast.Prog.t) =
-  let env = Variable_environment.create () in
+  let env = Variable_env.create () in
   Located.map prog ~f:(stack_ fun fun_def -> resolve_fun_def fun_def ~env) [@nontail]
 ;;

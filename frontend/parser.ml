@@ -297,6 +297,9 @@ let rec parse_stmt token_stream =
       Source.Location.between (Located.location token) (Located.location colon)
     in
     Located.create (Stmt.Label { lbl; stmt }) ~location
+  | Open_brace ->
+    let block = parse_block token_stream in
+    Located.map block ~f:(stack_ fun _ -> Ast.Stmt.Compound block) [@nontail]
   | _ ->
     let expr = parse_expr token_stream ~min_precedence:0 in
     let semicolon = expect token_stream Semicolon in
@@ -304,9 +307,8 @@ let rec parse_stmt token_stream =
       Source.Location.between (Located.location expr) (Located.location semicolon)
     in
     Located.create (Stmt.Expr expr) ~location
-;;
 
-let parse_block_item token_stream =
+and parse_block_item token_stream =
   match Source.Located.value (Token_stream.peek token_stream ~distance:0) with
   | Int ->
     let decl = parse_decl token_stream in
@@ -314,6 +316,24 @@ let parse_block_item token_stream =
   | _ ->
     let stmt = parse_stmt token_stream in
     Located.create (Block_item.Stmt stmt) ~location:(Located.location stmt)
+
+and parse_block token_stream =
+  let open_brace = expect token_stream Open_brace in
+  let block = Vec.create () in
+  let mutable is_block = true in
+  while is_block do
+    let token = Token_stream.peek token_stream ~distance:0 in
+    match Located.value token with
+    | Close_brace -> is_block <- false
+    | _ ->
+      let block_item = parse_block_item token_stream in
+      Vec.push_back block block_item
+  done;
+  let close_brace = expect token_stream Close_brace in
+  let location =
+    Source.Location.between (Located.location open_brace) (Located.location close_brace)
+  in
+  Located.create block ~location
 ;;
 
 let parse_fun_def token_stream =
@@ -327,20 +347,8 @@ let parse_fun_def token_stream =
   ignore (expect token_stream Open_paren);
   ignore (expect token_stream Void);
   ignore (expect token_stream Close_paren);
-  ignore (expect token_stream Open_brace);
-  let body = Vec.create () in
-  while
-    match Source.Located.value (Token_stream.peek token_stream ~distance:0) with
-    | Close_brace -> false
-    | _ -> true
-  do
-    let block_item = parse_block_item token_stream in
-    Vec.push_back body block_item
-  done;
-  let close_brace = expect token_stream Close_brace in
-  let location =
-    Source.Location.between (Located.location int) (Located.location close_brace)
-  in
+  let body = parse_block token_stream in
+  let location = Source.Location.between (Located.location int) (Located.location body) in
   Located.create { Fun_def.name; body } ~location
 ;;
 

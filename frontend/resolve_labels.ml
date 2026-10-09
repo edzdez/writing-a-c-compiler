@@ -4,6 +4,7 @@ module Located = Source.Located
 let fresh_label fresh_ids = [%string "lbl.%{Common.Fresh_id.fresh fresh_ids#Int}"]
 
 let gather_labels body =
+  let body = Located.value body in
   let fresh_ids = Common.Fresh_id.create () in
   let labels = String.Table.create () in
   let rec local_ gather_labels stmt =
@@ -16,6 +17,13 @@ let gather_labels body =
     | If { cond = _; then_; else_ } ->
       gather_labels then_;
       Or_null.iter else_ ~f:(stack_ fun else_ -> gather_labels else_) [@nontail]
+    | Compound block ->
+      let block = Located.value block in
+      Vec.iter block ~f:(stack_ fun block_item ->
+        match Located.value block_item with
+        | Decl _ -> ()
+        | Stmt stmt -> gather_labels stmt)
+      [@nontail]
     | Return _ | Expr _ | Goto _ | Null -> ()
   in
   Vec.iter body ~f:(stack_ fun block_item ->
@@ -44,25 +52,33 @@ let rec resolve_stmt stmt ~labels =
         ; else_ = Or_null.map else_ ~f:(stack_ fun else_ -> resolve_stmt else_ ~labels)
         })
     [@nontail]
+  | Compound block ->
+    Located.map block ~f:(stack_ fun _ -> Ast.Stmt.Compound (resolve_block block ~labels))
+    [@nontail]
   | Return _ | Expr _ | Null -> stmt
-;;
 
-let resolve_block_item block_item ~labels =
+and resolve_block_item block_item ~labels =
   match Located.value block_item with
   | Ast.Block_item.Stmt stmt ->
     Located.map block_item ~f:(stack_ fun _ ->
       Ast.Block_item.Stmt (resolve_stmt stmt ~labels))
     [@nontail]
   | Decl _ -> block_item
+
+and resolve_block block ~labels =
+  Located.map block ~f:(stack_ fun block ->
+    let resolved_block = Vec.create () ~initial_capacity:(Vec.length block) in
+    Vec.iter block ~f:(stack_ fun block_item ->
+      Vec.push_back resolved_block (resolve_block_item block_item ~labels));
+    resolved_block)
+  [@nontail]
 ;;
 
 let resolve_fun_def fun_def =
   Located.map fun_def ~f:(stack_ fun { Ast.Fun_def.name; body } ->
     let labels = gather_labels body in
-    let resolved_body = Vec.create () ~initial_capacity:(Vec.length body) in
-    Vec.iter body ~f:(stack_ fun block_item ->
-      Vec.push_back resolved_body (resolve_block_item block_item ~labels));
-    { Ast.Fun_def.name; body = resolved_body })
+    let body = resolve_block body ~labels in
+    { Ast.Fun_def.name; body })
   [@nontail]
 ;;
 

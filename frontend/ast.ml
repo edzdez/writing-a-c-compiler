@@ -98,7 +98,7 @@ module Decl = struct
   [@@deriving sexp_of]
 end
 
-module Stmt = struct
+module rec Stmt : sig
   type t = node Source.Located.t
 
   and node =
@@ -114,11 +114,38 @@ module Stmt = struct
         ; stmt : t
         }
     | Goto of string
+    | Compound of Block.t
+    | Null
+  [@@deriving sexp_of]
+end = struct
+  type t = node Source.Located.t
+
+  and node =
+    | Return of Expr.t
+    | Expr of Expr.t
+    | If of
+        { cond : Expr.t
+        ; then_ : t
+        ; else_ : t or_null
+        }
+    | Label of
+        { lbl : string
+        ; stmt : t
+        }
+    | Goto of string
+    | Compound of Block.t
     | Null
   [@@deriving sexp_of]
 end
 
-module Block_item = struct
+and Block_item : sig
+  type t = node Source.Located.t
+
+  and node =
+    | Decl of Decl.t
+    | Stmt of Stmt.t
+  [@@deriving sexp_of]
+end = struct
   type t = node Source.Located.t
 
   and node =
@@ -127,12 +154,20 @@ module Block_item = struct
   [@@deriving sexp_of]
 end
 
+and Block : sig
+  type t = node Source.Located.t
+  and node = Block_item.t Vec.t [@@deriving sexp_of]
+end = struct
+  type t = node Source.Located.t
+  and node = Block_item.t Vec.t [@@deriving sexp_of]
+end
+
 module Fun_def = struct
   type t = node Source.Located.t
 
   and node =
     { name : string
-    ; body : Block_item.t Vec.t
+    ; body : Block.t
     }
   [@@deriving sexp_of]
 end

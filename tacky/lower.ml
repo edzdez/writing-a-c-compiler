@@ -215,19 +215,24 @@ let rec lower_stmt stmt ~builder =
   | Label { lbl; stmt } ->
     Builder.emit builder (Ir.Instr.Label lbl);
     lower_stmt stmt ~builder
+  | Compound block -> lower_block block ~builder
   | Goto lbl -> Builder.emit builder (Ir.Instr.Jmp lbl)
   | Null -> ()
-;;
 
-let lower_block_item block_item ~builder =
+and lower_block_item block_item ~builder =
   match Located.value block_item with
   | Ast.Block_item.Decl decl -> lower_decl decl ~builder
   | Stmt stmt -> lower_stmt stmt ~builder
+
+and lower_block block ~builder =
+  let block = Located.value block in
+  Vec.iter block ~f:(stack_ fun block_item -> lower_block_item block_item ~builder)
+  [@nontail]
 ;;
 
 let lower_fun_def fun_def ~builder =
   let { Ast.Fun_def.name; body } = Located.value fun_def in
-  Vec.iter body ~f:(stack_ fun block_item -> lower_block_item block_item ~builder);
+  lower_block body ~builder;
   Builder.emit builder (Ir.Instr.Return (Constant 0));
   { Ir.Fun_def.name; instrs = Builder.finish builder }
 ;;
