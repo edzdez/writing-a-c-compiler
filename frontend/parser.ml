@@ -16,171 +16,175 @@ let expect token_stream expected =
     raise_error actual ~expected:(expected |> Token.sexp_of_t |> Sexp.to_string_hum)
 ;;
 
-let parse_prefix_unary_op token_stream =
-  let token = Token_stream.pop token_stream in
-  match Located.value token with
-  | Hyphen -> Located.create Unary_op.Negate ~location:(Located.location token)
-  | Tilde -> Located.create Unary_op.Complement ~location:(Located.location token)
-  | Bang -> Located.create Unary_op.Not ~location:(Located.location token)
-  | Plus_plus -> Located.create Unary_op.Pre_incr ~location:(Located.location token)
-  | Hyphen_hyphen -> Located.create Unary_op.Pre_decr ~location:(Located.location token)
-  | _ -> raise_error token ~expected:"a prefix unary operator"
-;;
+module Prefix_operator = struct
+  type t = Unary_op.node
 
-let parse_postfix_unary_op token_stream =
-  let token = Token_stream.pop token_stream in
-  match Located.value token with
-  | Plus_plus -> Located.create Unary_op.Post_incr ~location:(Located.location token)
-  | Hyphen_hyphen -> Located.create Unary_op.Post_decr ~location:(Located.location token)
-  | _ -> raise_error token ~expected:"a postfix unary operator"
-;;
+  let of_token = function
+    | Token.Hyphen -> This Unary_op.Negate
+    | Tilde -> This Complement
+    | Bang -> This Not
+    | Plus_plus -> This Pre_incr
+    | Hyphen_hyphen -> This Pre_decr
+    | _ -> Null
+  ;;
+end
 
-let precedence bin_op =
-  match bin_op with
-  | Token.Plus -> 45
-  | Hyphen -> 45
-  | Star -> 50
-  | Slash -> 50
-  | Percent -> 50
-  | Ampersand -> 25
-  | Bar -> 15
-  | Caret -> 20
-  | Left_chevron -> 40
-  | Right_chevron -> 40
-  | Double_amp -> 10
-  | Double_bar -> 5
-  | Double_eq -> 30
-  | Bang_eq -> 30
-  | Lt -> 35
-  | Gt -> 35
-  | Lte -> 35
-  | Gte -> 35
-  | Question_mark -> 3
-  | Eq
-  | Plus_eq
-  | Hyphen_eq
-  | Star_eq
-  | Slash_eq
-  | Percent_eq
-  | Amp_eq
-  | Bar_eq
-  | Caret_eq
-  | Left_chevron_eq
-  | Right_chevron_eq -> 1
-  | _ -> -1
-;;
+module Postfix_operator = struct
+  type t = Unary_op.node
 
-let parse_binary_op token_stream =
-  let token = Token_stream.pop token_stream in
-  match Located.value token with
-  | Plus -> Located.create Binary_op.Add ~location:(Located.location token)
-  | Hyphen -> Located.create Binary_op.Sub ~location:(Located.location token)
-  | Star -> Located.create Binary_op.Mul ~location:(Located.location token)
-  | Slash -> Located.create Binary_op.Div ~location:(Located.location token)
-  | Percent -> Located.create Binary_op.Rem ~location:(Located.location token)
-  | Ampersand -> Located.create Binary_op.Bit_and ~location:(Located.location token)
-  | Bar -> Located.create Binary_op.Bit_or ~location:(Located.location token)
-  | Caret -> Located.create Binary_op.Xor ~location:(Located.location token)
-  | Left_chevron -> Located.create Binary_op.L_shift ~location:(Located.location token)
-  | Right_chevron -> Located.create Binary_op.R_shift ~location:(Located.location token)
-  | Double_amp -> Located.create Binary_op.And ~location:(Located.location token)
-  | Double_bar -> Located.create Binary_op.Or ~location:(Located.location token)
-  | Double_eq -> Located.create Binary_op.Eq ~location:(Located.location token)
-  | Bang_eq -> Located.create Binary_op.Neq ~location:(Located.location token)
-  | Lt -> Located.create Binary_op.Lt ~location:(Located.location token)
-  | Gt -> Located.create Binary_op.Gt ~location:(Located.location token)
-  | Lte -> Located.create Binary_op.Lte ~location:(Located.location token)
-  | Gte -> Located.create Binary_op.Gte ~location:(Located.location token)
-  | _ -> raise_error token ~expected:"a binary operator"
-;;
+  let of_token = function
+    | Token.Plus_plus -> This Unary_op.Post_incr
+    | Hyphen_hyphen -> This Post_decr
+    | _ -> Null
+  ;;
+end
 
-let compound_assignment_op token =
-  let op =
-    match Located.value token with
-    | Token.Plus_eq -> Binary_op.Add
-    | Hyphen_eq -> Sub
-    | Star_eq -> Mul
-    | Slash_eq -> Div
-    | Percent_eq -> Rem
-    | Amp_eq -> Bit_and
-    | Bar_eq -> Bit_or
-    | Caret_eq -> Xor
-    | Left_chevron_eq -> L_shift
-    | Right_chevron_eq -> R_shift
-    | token -> raise_s [%message "not a compound assignment operator" (token : Token.t)]
-  in
-  Located.create op ~location:(Located.location token)
-;;
+module Infix_operator = struct
+  module Associativity = struct
+    type t =
+      | Left
+      | Right
+  end
+
+  module Kind = struct
+    type t =
+      | Binary of Binary_op.node
+      | Assign
+      | Compound_assign of Binary_op.node
+      | Conditional
+  end
+
+  type t =
+    { kind : Kind.t
+    ; precedence : int
+    ; associativity : Associativity.t
+    }
+
+  let of_token = function
+    | Token.Plus ->
+      This { kind = Binary Binary_op.Add; precedence = 45; associativity = Left }
+    | Hyphen -> This { kind = Binary Sub; precedence = 45; associativity = Left }
+    | Star -> This { kind = Binary Mul; precedence = 50; associativity = Left }
+    | Slash -> This { kind = Binary Div; precedence = 50; associativity = Left }
+    | Percent -> This { kind = Binary Rem; precedence = 50; associativity = Left }
+    | Ampersand -> This { kind = Binary Bit_and; precedence = 25; associativity = Left }
+    | Bar -> This { kind = Binary Bit_or; precedence = 15; associativity = Left }
+    | Caret -> This { kind = Binary Xor; precedence = 20; associativity = Left }
+    | Left_chevron ->
+      This { kind = Binary L_shift; precedence = 40; associativity = Left }
+    | Right_chevron ->
+      This { kind = Binary R_shift; precedence = 40; associativity = Left }
+    | Double_amp -> This { kind = Binary And; precedence = 10; associativity = Left }
+    | Double_bar -> This { kind = Binary Or; precedence = 5; associativity = Left }
+    | Double_eq -> This { kind = Binary Eq; precedence = 30; associativity = Left }
+    | Bang_eq -> This { kind = Binary Neq; precedence = 30; associativity = Left }
+    | Lt -> This { kind = Binary Lt; precedence = 35; associativity = Left }
+    | Gt -> This { kind = Binary Gt; precedence = 35; associativity = Left }
+    | Lte -> This { kind = Binary Lte; precedence = 35; associativity = Left }
+    | Gte -> This { kind = Binary Gte; precedence = 35; associativity = Left }
+    | Eq -> This { kind = Assign; precedence = 1; associativity = Right }
+    | Plus_eq ->
+      This { kind = Compound_assign Add; precedence = 1; associativity = Right }
+    | Hyphen_eq ->
+      This { kind = Compound_assign Sub; precedence = 1; associativity = Right }
+    | Star_eq ->
+      This { kind = Compound_assign Mul; precedence = 1; associativity = Right }
+    | Slash_eq ->
+      This { kind = Compound_assign Div; precedence = 1; associativity = Right }
+    | Percent_eq ->
+      This { kind = Compound_assign Rem; precedence = 1; associativity = Right }
+    | Amp_eq ->
+      This { kind = Compound_assign Bit_and; precedence = 1; associativity = Right }
+    | Bar_eq ->
+      This { kind = Compound_assign Bit_or; precedence = 1; associativity = Right }
+    | Caret_eq ->
+      This { kind = Compound_assign Xor; precedence = 1; associativity = Right }
+    | Left_chevron_eq ->
+      This { kind = Compound_assign L_shift; precedence = 1; associativity = Right }
+    | Right_chevron_eq ->
+      This { kind = Compound_assign R_shift; precedence = 1; associativity = Right }
+    | Question_mark -> This { kind = Conditional; precedence = 3; associativity = Right }
+    | _ -> Null
+  ;;
+
+  let precedence t =
+    match t.associativity with
+    | Left -> t.precedence + 1
+    | Right -> t.precedence
+  ;;
+end
 
 let rec parse_expr token_stream ~min_precedence =
   let mutable left = parse_factor token_stream in
-  let mutable token = Located.value (Token_stream.peek token_stream ~distance:0) in
-  while precedence token >= min_precedence do
-    (match token with
-     | Eq
-     | Plus_eq
-     | Hyphen_eq
-     | Star_eq
-     | Slash_eq
-     | Percent_eq
-     | Amp_eq
-     | Bar_eq
-     | Caret_eq
-     | Left_chevron_eq
-     | Right_chevron_eq ->
-       let assignment_op = Token_stream.pop token_stream in
-       let right = parse_expr token_stream ~min_precedence:(precedence token) in
-       let location =
-         Source.Location.between (Located.location left) (Located.location right)
-       in
-       let assignment =
-         match token with
-         | Eq -> Expr.Assign { left; right }
-         | _ ->
-           Expr.Compound_assign { op = compound_assignment_op assignment_op; left; right }
-       in
-       left <- Located.create assignment ~location;
-       token <- Located.value (Token_stream.peek token_stream ~distance:0)
-     | Question_mark ->
-       let then_ = parse_conditional_then token_stream in
-       let else_ = parse_expr token_stream ~min_precedence:(precedence token) in
-       let location =
-         Source.Location.between (Located.location left) (Located.location else_)
-       in
-       left <- Located.create (Expr.Conditional { cond = left; then_; else_ }) ~location
-     | _ ->
-       let op = parse_binary_op token_stream in
-       let right = parse_expr token_stream ~min_precedence:(precedence token + 1) in
-       let location =
-         Source.Location.between (Located.location left) (Located.location right)
-       in
-       left <- Located.create (Expr.Binary { op; left; right }) ~location);
-    token <- Located.value (Token_stream.peek token_stream ~distance:0)
+  let mutable is_infix = true in
+  while is_infix do
+    let token = Token_stream.peek token_stream ~distance:0 in
+    match Infix_operator.of_token (Located.value token) with
+    | This operator when operator.precedence >= min_precedence ->
+      left <- parse_infix_operator token_stream token operator ~left
+    | This _ | Null -> is_infix <- false
   done;
   left
 
+and parse_infix_operator token_stream token operator ~left =
+  let precedence = Infix_operator.precedence operator in
+  match operator.kind with
+  | Binary op ->
+    ignore (Token_stream.pop token_stream);
+    let right = parse_expr token_stream ~min_precedence:precedence in
+    let location =
+      Source.Location.between (Located.location left) (Located.location right)
+    in
+    let op = Located.map token ~f:(stack_ fun _ -> op) [@nontail] in
+    Located.create (Expr.Binary { op; left; right }) ~location
+  | Assign ->
+    ignore (Token_stream.pop token_stream);
+    let right = parse_expr token_stream ~min_precedence:precedence in
+    let location =
+      Source.Location.between (Located.location left) (Located.location right)
+    in
+    Located.create (Expr.Assign { left; right }) ~location
+  | Compound_assign op ->
+    ignore (Token_stream.pop token_stream);
+    let right = parse_expr token_stream ~min_precedence:precedence in
+    let location =
+      Source.Location.between (Located.location left) (Located.location right)
+    in
+    let op = Located.map token ~f:(stack_ fun _ -> op) [@nontail] in
+    Located.create (Expr.Compound_assign { op; left; right }) ~location
+  | Conditional ->
+    let then_ = parse_conditional_then token_stream in
+    let else_ = parse_expr token_stream ~min_precedence:precedence in
+    let location =
+      Source.Location.between (Located.location left) (Located.location else_)
+    in
+    Located.create (Expr.Conditional { cond = left; then_; else_ }) ~location
+
 and parse_factor token_stream =
   let token = Token_stream.peek token_stream ~distance:0 in
-  match Located.value token with
-  | Plus_plus | Hyphen_hyphen | Hyphen | Tilde | Bang ->
-    let op = parse_prefix_unary_op token_stream in
+  match Prefix_operator.of_token (Located.value token) with
+  | This op ->
+    ignore (Token_stream.pop token_stream);
+    let op = Located.map token ~f:(stack_ fun _ -> op) [@nontail] in
     let expr = parse_factor token_stream in
     let location =
       Source.Location.between (Located.location op) (Located.location expr)
     in
     Located.create (Expr.Unary { op; expr }) ~location
-  | _ ->
+  | Null ->
     let mutable expr = parse_primary token_stream in
-    while
-      match Source.Located.value (Token_stream.peek token_stream ~distance:0) with
-      | Plus_plus | Hyphen_hyphen -> true
-      | _ -> false
-    do
-      let op = parse_postfix_unary_op token_stream in
-      let location =
-        Source.Location.between (Located.location expr) (Located.location op)
-      in
-      expr <- Located.create (Expr.Unary { op; expr }) ~location
+    let mutable is_postfix = true in
+    while is_postfix do
+      let token = Token_stream.peek token_stream ~distance:0 in
+      match Postfix_operator.of_token (Located.value token) with
+      | This op ->
+        ignore (Token_stream.pop token_stream);
+        let op = Located.map token ~f:(stack_ fun _ -> op) [@nontail] in
+        let location =
+          Source.Location.between (Located.location expr) (Located.location op)
+        in
+        expr <- Located.create (Expr.Unary { op; expr }) ~location
+      | Null -> is_postfix <- false
     done;
     expr
 
@@ -188,10 +192,10 @@ and parse_primary token_stream =
   let token = Token_stream.peek token_stream ~distance:0 in
   match Located.value token with
   | Const constant ->
-    let _ = Token_stream.pop token_stream in
+    ignore (Token_stream.pop token_stream);
     Located.create (Expr.Const constant) ~location:(Located.location token)
   | Ident ident ->
-    let _ = Token_stream.pop token_stream in
+    ignore (Token_stream.pop token_stream);
     Located.create (Expr.Var ident) ~location:(Located.location token)
   | Open_paren ->
     let open_paren = Token_stream.pop token_stream in
@@ -204,9 +208,9 @@ and parse_primary token_stream =
   | _ -> raise_error token ~expected:"a statement"
 
 and parse_conditional_then token_stream =
-  let _ = expect token_stream Question_mark in
+  ignore (expect token_stream Question_mark);
   let expr = parse_expr token_stream ~min_precedence:0 in
-  let _ = expect token_stream Colon in
+  ignore (expect token_stream Colon);
   expr
 ;;
 
@@ -221,7 +225,7 @@ let parse_decl token_stream =
   let token = Token_stream.peek token_stream ~distance:0 in
   match Source.Located.value token with
   | Eq ->
-    let _ = expect token_stream Eq in
+    ignore (Token_stream.pop token_stream);
     let init = parse_expr token_stream ~min_precedence:0 in
     let semicolon = expect token_stream Semicolon in
     let location =
@@ -253,14 +257,14 @@ let rec parse_stmt token_stream =
     Located.create Stmt.Null ~location:(Located.location semicolon)
   | If ->
     let if_ = expect token_stream If in
-    let _ = expect token_stream Open_paren in
+    ignore (expect token_stream Open_paren);
     let cond = parse_expr token_stream ~min_precedence:0 in
-    let _ = expect token_stream Close_paren in
+    ignore (expect token_stream Close_paren);
     let then_ = parse_stmt token_stream in
     let token = Token_stream.peek token_stream ~distance:0 in
     (match Located.value token with
      | Else ->
-       let _ = expect token_stream Else in
+       ignore (Token_stream.pop token_stream);
        let else_ = parse_stmt token_stream in
        let location =
          Source.Location.between (Located.location if_) (Located.location else_)
@@ -272,7 +276,7 @@ let rec parse_stmt token_stream =
        in
        Located.create (Stmt.If { cond; then_; else_ = Null }) ~location)
   | Goto ->
-    let _ = expect token_stream Goto in
+    ignore (Token_stream.pop token_stream);
     let label =
       let token = Token_stream.pop token_stream in
       match Located.value token with
@@ -286,7 +290,7 @@ let rec parse_stmt token_stream =
     Located.create (Stmt.Goto label) ~location
   | Ident lbl
     when Token.equal (Located.value (Token_stream.peek token_stream ~distance:1)) Colon ->
-    let _ = Token_stream.pop token_stream in
+    ignore (Token_stream.pop token_stream);
     let colon = expect token_stream Colon in
     let stmt = parse_stmt token_stream in
     let location =
