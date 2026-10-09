@@ -1,6 +1,6 @@
 (library
  (name frontend)
- (libraries core source vec)
+ (libraries common core source vec)
  (preprocess
   (pps ppx_jane)))
 

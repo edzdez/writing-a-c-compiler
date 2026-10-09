@@ -2,16 +2,33 @@ open! Core
 module Ast = Frontend.Ast
 module Located = Source.Located
 
-module Temp = struct
-  type t = { mutable next : int }
+module Builder = struct
+  type t =
+    { temporary_ids : Common.Fresh_id.t
+    ; label_ids : Common.Fresh_id.t
+    ; instructions : Ir.Instr.t Vec.t
+    }
 
-  let create () = { next = 0 }
-
-  let fresh t =
-    let x = t.next in
-    t.next <- x + 1;
-    x
+  let create () =
+    { temporary_ids = Common.Fresh_id.create ()
+    ; label_ids = Common.Fresh_id.create ()
+    ; instructions = Vec.create ()
+    }
   ;;
+
+  let emit t instruction = Vec.push_back t.instructions instruction
+
+  let fresh_temporary t =
+    Ir.Val.Var [%string "tmp.%{Common.Fresh_id.fresh t.temporary_ids#Int}"]
+  ;;
+
+  let fresh_branch_label t ~branch_prefix ~end_prefix =
+    let id = Common.Fresh_id.fresh t.label_ids in
+    #( ~branch:[%string "%{branch_prefix}.%{id#Int}"]
+     , ~end_:[%string "%{end_prefix}.%{id#Int}"] )
+  ;;
+
+  let finish t = t.instructions
 end
 
 let lower_unary_op unary_op =
@@ -71,7 +88,7 @@ let lower_lvalue expr =
   | expr -> raise_s [%message "invalid lvalue" (expr : Ast.Expr.node)]
 ;;
 
-let rec lower_expr expr ~temp_vars ~temp_lbls ~instrs =
+let rec lower_expr expr ~builder =
   match Located.value expr with
   | Ast.Expr.Const constant -> Ir.Val.Constant constant
   | Var v -> Ir.Val.Var v
@@ -79,150 +96,144 @@ let rec lower_expr expr ~temp_vars ~temp_lbls ~instrs =
     (match Located.value op with
      | Pre_incr | Pre_decr ->
        let expr = lower_lvalue expr in
-       let dst = Ir.Val.Var [%string "tmp.%{Temp.fresh temp_vars#Int}"] in
-       Vec.push_back instrs (incr_instr_for op expr dst);
-       Vec.push_back instrs (Ir.Instr.Copy { src = dst; dst = expr });
+       let dst = Builder.fresh_temporary builder in
+       Builder.emit builder (incr_instr_for op expr dst);
+       Builder.emit builder (Ir.Instr.Copy { src = dst; dst = expr });
        dst
      | Post_incr | Post_decr ->
        let expr = lower_lvalue expr in
-       let old = Ir.Val.Var [%string "tmp.%{Temp.fresh temp_vars#Int}"] in
-       let dst = Ir.Val.Var [%string "tmp.%{Temp.fresh temp_vars#Int}"] in
-       Vec.push_back instrs (Ir.Instr.Copy { src = expr; dst = old });
-       Vec.push_back instrs (incr_instr_for op expr dst);
-       Vec.push_back instrs (Ir.Instr.Copy { src = dst; dst = expr });
+       let old = Builder.fresh_temporary builder in
+       let dst = Builder.fresh_temporary builder in
+       Builder.emit builder (Ir.Instr.Copy { src = expr; dst = old });
+       Builder.emit builder (incr_instr_for op expr dst);
+       Builder.emit builder (Ir.Instr.Copy { src = dst; dst = expr });
        old
      | _ ->
-       let src = lower_expr expr ~temp_vars ~temp_lbls ~instrs in
-       let dst = Ir.Val.Var [%string "tmp.%{Temp.fresh temp_vars#Int}"] in
+       let src = lower_expr expr ~builder in
+       let dst = Builder.fresh_temporary builder in
        let op = lower_unary_op op in
-       Vec.push_back instrs (Ir.Instr.Unary { op; src; dst });
+       Builder.emit builder (Ir.Instr.Unary { op; src; dst });
        dst)
   | Binary { op; left; right } ->
     (match Located.value op with
      | And | Or ->
-       let tst1 = lower_expr left ~temp_vars ~temp_lbls ~instrs in
-       let fresh_lbl = Temp.fresh temp_lbls in
-       let branch_lbl =
-         let branch_lbl_prefix =
-           match_and_or
-             op
-             ~and_:(stack_ fun () -> "and_false")
-             ~or_:(stack_ fun () -> "or_true")
-         in
-         [%string "%{branch_lbl_prefix}.%{fresh_lbl#Int}"]
+       let tst1 = lower_expr left ~builder in
+       let branch_prefix =
+         match_and_or
+           op
+           ~and_:(stack_ fun () -> "and_false")
+           ~or_:(stack_ fun () -> "or_true")
        in
-       let end_lbl =
-         let end_lbl_prefix =
-           match_and_or
-             op
-             ~and_:(stack_ fun () -> "and_end")
-             ~or_:(stack_ fun () -> "or_end")
-         in
-         [%string "%{end_lbl_prefix}.%{fresh_lbl#Int}"]
+       let end_prefix =
+         match_and_or
+           op
+           ~and_:(stack_ fun () -> "and_end")
+           ~or_:(stack_ fun () -> "or_end")
+       in
+       let #(~branch:branch_lbl, ~end_:end_lbl) =
+         Builder.fresh_branch_label builder ~branch_prefix ~end_prefix
        in
        let res = match_and_or op ~and_:(stack_ fun () -> 1) ~or_:(stack_ fun () -> 0) in
-       Vec.push_back instrs (jmp_instr_for op tst1 branch_lbl);
-       let tst2 = lower_expr right ~temp_vars ~temp_lbls ~instrs in
-       Vec.push_back instrs (jmp_instr_for op tst2 branch_lbl);
-       let dst = Ir.Val.Var [%string "tmp.%{Temp.fresh temp_vars#Int}"] in
-       Vec.push_back instrs (Ir.Instr.Copy { src = Constant res; dst });
-       Vec.push_back instrs (Ir.Instr.Jmp end_lbl);
-       Vec.push_back instrs (Ir.Instr.Label branch_lbl);
-       Vec.push_back instrs (Ir.Instr.Copy { src = Constant (1 - res); dst });
-       Vec.push_back instrs (Ir.Instr.Label end_lbl);
+       Builder.emit builder (jmp_instr_for op tst1 branch_lbl);
+       let tst2 = lower_expr right ~builder in
+       Builder.emit builder (jmp_instr_for op tst2 branch_lbl);
+       let dst = Builder.fresh_temporary builder in
+       Builder.emit builder (Ir.Instr.Copy { src = Constant res; dst });
+       Builder.emit builder (Ir.Instr.Jmp end_lbl);
+       Builder.emit builder (Ir.Instr.Label branch_lbl);
+       Builder.emit builder (Ir.Instr.Copy { src = Constant (1 - res); dst });
+       Builder.emit builder (Ir.Instr.Label end_lbl);
        dst
      | _ ->
-       let left = lower_expr left ~temp_vars ~temp_lbls ~instrs in
-       let right = lower_expr right ~temp_vars ~temp_lbls ~instrs in
-       let dst = Ir.Val.Var [%string "tmp.%{Temp.fresh temp_vars#Int}"] in
+       let left = lower_expr left ~builder in
+       let right = lower_expr right ~builder in
+       let dst = Builder.fresh_temporary builder in
        let op = lower_binary_op op in
-       Vec.push_back instrs (Ir.Instr.Binary { op; left; right; dst });
+       Builder.emit builder (Ir.Instr.Binary { op; left; right; dst });
        dst)
   | Assign { left; right } ->
-    let src = lower_expr right ~temp_vars ~temp_lbls ~instrs in
+    let src = lower_expr right ~builder in
     let dst = lower_lvalue left in
-    Vec.push_back instrs (Ir.Instr.Copy { src; dst });
+    Builder.emit builder (Ir.Instr.Copy { src; dst });
     dst
   | Compound_assign { op; left; right } ->
     let dst = lower_lvalue left in
-    let right = lower_expr right ~temp_vars ~temp_lbls ~instrs in
-    let result = Ir.Val.Var [%string "tmp.%{Temp.fresh temp_vars#Int}"] in
+    let right = lower_expr right ~builder in
+    let result = Builder.fresh_temporary builder in
     let op = lower_binary_op op in
-    Vec.push_back instrs (Ir.Instr.Binary { op; left = dst; right; dst = result });
-    Vec.push_back instrs (Ir.Instr.Copy { src = result; dst });
+    Builder.emit builder (Ir.Instr.Binary { op; left = dst; right; dst = result });
+    Builder.emit builder (Ir.Instr.Copy { src = result; dst });
     result
   | Conditional { cond; then_; else_ } ->
-    let tst = lower_expr cond ~temp_vars ~temp_lbls ~instrs in
-    let dst = Ir.Val.Var [%string "tmp.%{Temp.fresh temp_vars#Int}"] in
-    let fresh_lbl = Temp.fresh temp_lbls in
-    let else_lbl = [%string "cond_else.%{fresh_lbl#Int}"] in
-    let end_lbl = [%string "cond_end.%{fresh_lbl#Int}"] in
-    Vec.push_back instrs (Ir.Instr.Jz { tst; tgt = else_lbl });
-    let then_result = lower_expr then_ ~temp_vars ~temp_lbls ~instrs in
-    Vec.push_back instrs (Ir.Instr.Copy { dst; src = then_result });
-    Vec.push_back instrs (Ir.Instr.Jmp end_lbl);
-    Vec.push_back instrs (Ir.Instr.Label else_lbl);
-    let else_result = lower_expr else_ ~temp_vars ~temp_lbls ~instrs in
-    Vec.push_back instrs (Ir.Instr.Copy { dst; src = else_result });
-    Vec.push_back instrs (Ir.Instr.Label end_lbl);
+    let tst = lower_expr cond ~builder in
+    let dst = Builder.fresh_temporary builder in
+    let #(~branch:else_lbl, ~end_:end_lbl) =
+      Builder.fresh_branch_label builder ~branch_prefix:"cond_else" ~end_prefix:"cond_end"
+    in
+    Builder.emit builder (Ir.Instr.Jz { tst; tgt = else_lbl });
+    let then_result = lower_expr then_ ~builder in
+    Builder.emit builder (Ir.Instr.Copy { dst; src = then_result });
+    Builder.emit builder (Ir.Instr.Jmp end_lbl);
+    Builder.emit builder (Ir.Instr.Label else_lbl);
+    let else_result = lower_expr else_ ~builder in
+    Builder.emit builder (Ir.Instr.Copy { dst; src = else_result });
+    Builder.emit builder (Ir.Instr.Label end_lbl);
     dst
 ;;
 
-let lower_decl decl ~temp_vars ~temp_lbls ~instrs =
+let lower_decl decl ~builder =
   let { Ast.Decl.name; init } = Located.value decl in
   match init with
   | Null -> ()
   | This expr ->
-    let src = lower_expr expr ~temp_vars ~temp_lbls ~instrs in
+    let src = lower_expr expr ~builder in
     let dst = Ir.Val.Var name in
-    Vec.push_back instrs (Ir.Instr.Copy { src; dst })
+    Builder.emit builder (Ir.Instr.Copy { src; dst })
 ;;
 
-let rec lower_stmt stmt ~temp_vars ~temp_lbls ~instrs =
+let rec lower_stmt stmt ~builder =
   match Located.value stmt with
   | Ast.Stmt.Return expr ->
-    let val_ = lower_expr expr ~temp_vars ~temp_lbls ~instrs in
-    Vec.push_back instrs (Ir.Instr.Return val_)
-  | Expr expr -> ignore (lower_expr expr ~temp_vars ~temp_lbls ~instrs)
+    let val_ = lower_expr expr ~builder in
+    Builder.emit builder (Ir.Instr.Return val_)
+  | Expr expr -> ignore (lower_expr expr ~builder)
   | If { cond; then_; else_ } ->
-    let tst = lower_expr cond ~temp_vars ~temp_lbls ~instrs in
-    let fresh_lbl = Temp.fresh temp_lbls in
-    let else_lbl = [%string "if_else.%{fresh_lbl#Int}"] in
-    let end_lbl = [%string "if_end.%{fresh_lbl#Int}"] in
-    Vec.push_back
-      instrs
+    let tst = lower_expr cond ~builder in
+    let #(~branch:else_lbl, ~end_:end_lbl) =
+      Builder.fresh_branch_label builder ~branch_prefix:"if_else" ~end_prefix:"if_end"
+    in
+    Builder.emit
+      builder
       (Ir.Instr.Jz
          { tst; tgt = Or_null.value_map else_ ~default:end_lbl ~f:(const else_lbl) });
-    lower_stmt then_ ~temp_vars ~temp_lbls ~instrs;
+    lower_stmt then_ ~builder;
     Or_null.iter else_ ~f:(stack_ fun else_ ->
-      Vec.push_back instrs (Ir.Instr.Jmp end_lbl);
-      Vec.push_back instrs (Ir.Instr.Label else_lbl);
-      lower_stmt else_ ~temp_vars ~temp_lbls ~instrs);
-    Vec.push_back instrs (Ir.Instr.Label end_lbl)
+      Builder.emit builder (Ir.Instr.Jmp end_lbl);
+      Builder.emit builder (Ir.Instr.Label else_lbl);
+      lower_stmt else_ ~builder);
+    Builder.emit builder (Ir.Instr.Label end_lbl)
   | Label { lbl; stmt } ->
-    Vec.push_back instrs (Ir.Instr.Label lbl);
-    lower_stmt stmt ~temp_vars ~temp_lbls ~instrs
-  | Goto lbl -> Vec.push_back instrs (Ir.Instr.Jmp lbl)
+    Builder.emit builder (Ir.Instr.Label lbl);
+    lower_stmt stmt ~builder
+  | Goto lbl -> Builder.emit builder (Ir.Instr.Jmp lbl)
   | Null -> ()
 ;;
 
-let lower_block_item block_item ~temp_vars ~temp_lbls ~instrs =
+let lower_block_item block_item ~builder =
   match Located.value block_item with
-  | Ast.Block_item.Decl decl -> lower_decl decl ~temp_vars ~temp_lbls ~instrs
-  | Stmt stmt -> lower_stmt stmt ~temp_vars ~temp_lbls ~instrs
+  | Ast.Block_item.Decl decl -> lower_decl decl ~builder
+  | Stmt stmt -> lower_stmt stmt ~builder
 ;;
 
-let lower_fun_def fun_def ~temp_vars ~temp_lbls =
+let lower_fun_def fun_def ~builder =
   let { Ast.Fun_def.name; body } = Located.value fun_def in
-  let instrs = Vec.create () in
-  Vec.iter body ~f:(lower_block_item ~temp_vars ~temp_lbls ~instrs);
-  Vec.push_back instrs (Ir.Instr.Return (Constant 0));
-  { Ir.Fun_def.name; instrs }
+  Vec.iter body ~f:(stack_ fun block_item -> lower_block_item block_item ~builder);
+  Builder.emit builder (Ir.Instr.Return (Constant 0));
+  { Ir.Fun_def.name; instrs = Builder.finish builder }
 ;;
 
 let program prog =
   let prog = Located.value prog in
-  let temp_vars = Temp.create () in
-  let temp_lbls = Temp.create () in
-  lower_fun_def prog ~temp_vars ~temp_lbls
+  let builder = Builder.create () in
+  lower_fun_def prog ~builder
 ;;

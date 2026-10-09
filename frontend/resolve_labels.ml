@@ -1,90 +1,71 @@
 open! Core
 module Located = Source.Located
 
-module Temp = struct
-  type t = { mutable next : int }
+let fresh_label fresh_ids = [%string "lbl.%{Common.Fresh_id.fresh fresh_ids#Int}"]
 
-  let create () = { next = 0 }
-
-  let fresh t =
-    let x = t.next in
-    t.next <- x + 1;
-    x
-  ;;
-end
-
-let gather_lbls body =
-  let tmp = Temp.create () in
-  let lbls = String.Table.create () in
-  let rec local_ gather_lbls stmt =
+let gather_labels body =
+  let fresh_ids = Common.Fresh_id.create () in
+  let labels = String.Table.create () in
+  let rec local_ gather_labels stmt =
     match Located.value stmt with
     | Ast.Stmt.Label { lbl; stmt = inner } ->
-      (match Hashtbl.find_or_null lbls lbl with
-       | This _ ->
-         Error_helpers.raise_error
-           [%string "duplicate label %{lbl}"]
-           ~position:(Located.location stmt |> Source.Location.start_position)
-       | Null -> Hashtbl.add_exn lbls ~key:lbl ~data:[%string "lbl.%{Temp.fresh tmp#Int}"]);
-      gather_lbls inner
+      (match Hashtbl.mem labels lbl with
+       | true -> Error_helpers.raise_at stmt [%string "duplicate label %{lbl}"]
+       | false -> Hashtbl.add_exn labels ~key:lbl ~data:(fresh_label fresh_ids));
+      gather_labels inner
     | If { cond = _; then_; else_ } ->
-      gather_lbls then_;
-      Or_null.iter else_ ~f:(stack_ fun else_ -> gather_lbls else_) [@nontail]
+      gather_labels then_;
+      Or_null.iter else_ ~f:(stack_ fun else_ -> gather_labels else_) [@nontail]
     | Return _ | Expr _ | Goto _ | Null -> ()
   in
   Vec.iter body ~f:(stack_ fun block_item ->
     match Located.value block_item with
-    | Ast.Block_item.Stmt stmt -> gather_lbls stmt
+    | Ast.Block_item.Stmt stmt -> gather_labels stmt
     | Decl _ -> ());
-  lbls
+  labels
 ;;
 
-let rec resolve_stmt stmt ~lbls =
+let rec resolve_stmt stmt ~labels =
   match Located.value stmt with
-  | Ast.Stmt.Label { lbl; stmt } ->
-    let lbl = Hashtbl.find_exn lbls lbl in
-    Located.create
-      (Ast.Stmt.Label { lbl; stmt = resolve_stmt stmt ~lbls })
-      ~location:(Located.location stmt)
+  | Ast.Stmt.Label { lbl; stmt = inner } ->
+    let lbl = Hashtbl.find_exn labels lbl in
+    Located.map stmt ~f:(stack_ fun _ ->
+      Ast.Stmt.Label { lbl; stmt = resolve_stmt inner ~labels })
+    [@nontail]
   | Goto lbl ->
-    (match Hashtbl.find_or_null lbls lbl with
-     | Null ->
-       Error_helpers.raise_error
-         [%string "undeclared label %{lbl}"]
-         ~position:(Located.location stmt |> Source.Location.start_position)
-     | This lbl -> Located.create (Ast.Stmt.Goto lbl) ~location:(Located.location stmt))
+    (match Hashtbl.find_or_null labels lbl with
+     | Null -> Error_helpers.raise_at stmt [%string "undeclared label %{lbl}"]
+     | This lbl -> Located.map stmt ~f:(stack_ fun _ -> Ast.Stmt.Goto lbl) [@nontail])
   | If { cond; then_; else_ } ->
-    Located.create
-      (Ast.Stmt.If
-         { cond
-         ; then_ = resolve_stmt then_ ~lbls
-         ; else_ = Or_null.map else_ ~f:(stack_ fun else_ -> resolve_stmt else_ ~lbls)
-         })
-      ~location:(Located.location stmt)
+    Located.map stmt ~f:(stack_ fun _ ->
+      Ast.Stmt.If
+        { cond
+        ; then_ = resolve_stmt then_ ~labels
+        ; else_ = Or_null.map else_ ~f:(stack_ fun else_ -> resolve_stmt else_ ~labels)
+        })
+    [@nontail]
   | Return _ | Expr _ | Null -> stmt
 ;;
 
-let resolve_block_item block_item ~lbls =
+let resolve_block_item block_item ~labels =
   match Located.value block_item with
   | Ast.Block_item.Stmt stmt ->
-    let stmt = resolve_stmt stmt ~lbls in
-    Located.create (Ast.Block_item.Stmt stmt) ~location:(Located.location block_item)
+    Located.map block_item ~f:(stack_ fun _ ->
+      Ast.Block_item.Stmt (resolve_stmt stmt ~labels))
+    [@nontail]
   | Decl _ -> block_item
 ;;
 
 let resolve_fun_def fun_def =
-  let { Ast.Fun_def.name; body } = Located.value fun_def in
-  let lbls = gather_lbls body in
-  let new_body = Vec.create () ~initial_capacity:(Vec.length body) in
-  Vec.iter body ~f:(stack_ fun block_item ->
-    let block_item = resolve_block_item block_item ~lbls in
-    Vec.push_back new_body block_item);
-  Located.create
-    { Ast.Fun_def.name; body = new_body }
-    ~location:(Located.location fun_def)
+  Located.map fun_def ~f:(stack_ fun { Ast.Fun_def.name; body } ->
+    let labels = gather_labels body in
+    let resolved_body = Vec.create () ~initial_capacity:(Vec.length body) in
+    Vec.iter body ~f:(stack_ fun block_item ->
+      Vec.push_back resolved_body (resolve_block_item block_item ~labels));
+    { Ast.Fun_def.name; body = resolved_body })
+  [@nontail]
 ;;
 
 let program (prog : Ast.Prog.t) =
-  let fun_def = Located.value prog in
-  let fun_def = resolve_fun_def fun_def in
-  Located.create fun_def ~location:(Located.location prog)
+  Located.map prog ~f:(stack_ fun fun_def -> resolve_fun_def fun_def) [@nontail]
 ;;

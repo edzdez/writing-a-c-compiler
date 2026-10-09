@@ -1,18 +1,6 @@
 open! Core
 module Located = Source.Located
 
-module Temp = struct
-  type t = { mutable next : int }
-
-  let create () = { next = 0 }
-
-  let fresh t =
-    let x = t.next in
-    t.next <- x + 1;
-    x
-  ;;
-end
-
 let is_lvalue expr =
   match Located.value expr with
   | Ast.Expr.Var _ -> true
@@ -20,125 +8,113 @@ let is_lvalue expr =
 ;;
 
 let validate_lvalue expr =
-  match is_lvalue expr with
-  | true -> ()
-  | false ->
-    Error_helpers.raise_error
+  if not (is_lvalue expr)
+  then
+    Error_helpers.raise_at
+      expr
       [%string "expected an lvalue, found %{Ast.Expr.describe expr}"]
-      ~position:(Located.location expr |> Source.Location.start_position)
 ;;
 
-let rec resolve_expr expr ~vars =
+let validate_unary_lvalue op expr =
+  match Located.value op with
+  | (Ast.Unary_op.Pre_incr | Pre_decr | Post_incr | Post_decr) when not (is_lvalue expr)
+    ->
+    Error_helpers.raise_at
+      expr
+      [%string "expected an lvalue, found %{Ast.Expr.describe expr}"]
+  | _ -> ()
+;;
+
+let rec resolve_expr expr ~env =
   match Located.value expr with
   | Ast.Expr.Assign { left; right } ->
     validate_lvalue left;
-    Located.create
-      (Ast.Expr.Assign
-         { left = resolve_expr left ~vars; right = resolve_expr right ~vars })
-      ~location:(Located.location expr)
+    Located.map expr ~f:(stack_ fun _ ->
+      Ast.Expr.Assign { left = resolve_expr left ~env; right = resolve_expr right ~env })
+    [@nontail]
   | Compound_assign { op; left; right } ->
     validate_lvalue left;
-    Located.create
-      (Ast.Expr.Compound_assign
-         { op; left = resolve_expr left ~vars; right = resolve_expr right ~vars })
-      ~location:(Located.location expr)
+    Located.map expr ~f:(stack_ fun _ ->
+      Ast.Expr.Compound_assign
+        { op; left = resolve_expr left ~env; right = resolve_expr right ~env })
+    [@nontail]
   | Conditional { cond; then_; else_ } ->
-    Located.create
-      (Ast.Expr.Conditional
-         { cond = resolve_expr cond ~vars
-         ; then_ = resolve_expr then_ ~vars
-         ; else_ = resolve_expr else_ ~vars
-         })
-      ~location:(Located.location expr)
-  | Var v ->
-    (match Hashtbl.find_or_null vars v with
-     | Null ->
-       Error_helpers.raise_error
-         [%string "undeclared variable %{v}"]
-         ~position:(Located.location expr |> Source.Location.start_position)
-     | This v -> Located.create (Ast.Expr.Var v) ~location:(Located.location expr))
+    Located.map expr ~f:(stack_ fun _ ->
+      Ast.Expr.Conditional
+        { cond = resolve_expr cond ~env
+        ; then_ = resolve_expr then_ ~env
+        ; else_ = resolve_expr else_ ~env
+        })
+    [@nontail]
+  | Var source_name ->
+    (match Variable_environment.find env source_name with
+     | Null -> Error_helpers.raise_at expr [%string "undeclared variable %{source_name}"]
+     | This resolved_name ->
+       Located.map expr ~f:(stack_ fun _ -> Ast.Expr.Var resolved_name) [@nontail])
   | Unary { op; expr = inner } ->
-    (match Located.value op with
-     | (Pre_incr | Pre_decr | Post_incr | Post_decr) when not (is_lvalue inner) ->
-       Error_helpers.raise_error
-         [%string "expected an lvalue, found %{Ast.Expr.describe inner}"]
-         ~position:(Located.location inner |> Source.Location.start_position)
-     | _ ->
-       Located.create
-         (Ast.Expr.Unary { op; expr = resolve_expr inner ~vars })
-         ~location:(Located.location expr))
+    validate_unary_lvalue op inner;
+    Located.map expr ~f:(stack_ fun _ ->
+      Ast.Expr.Unary { op; expr = resolve_expr inner ~env })
+    [@nontail]
   | Binary { op; left; right } ->
-    Located.create
-      (Ast.Expr.Binary
-         { op; left = resolve_expr left ~vars; right = resolve_expr right ~vars })
-      ~location:(Located.location expr)
+    Located.map expr ~f:(stack_ fun _ ->
+      Ast.Expr.Binary
+        { op; left = resolve_expr left ~env; right = resolve_expr right ~env })
+    [@nontail]
   | Const _ -> expr
 ;;
 
-let resolve_decl decl ~vars ~temp_vars =
-  let { Ast.Decl.name; init } = Located.value decl in
-  match Hashtbl.find_or_null vars name with
-  | This _ ->
-    Error_helpers.raise_error
-      [%string "duplicate variable declaration %{name}"]
-      ~position:(Located.location decl |> Source.Location.start_position)
-  | Null ->
-    let unique_name = [%string "var.%{name}.%{Temp.fresh temp_vars#Int}"] in
-    Hashtbl.add_exn vars ~key:name ~data:unique_name;
-    let init = Or_null.map init ~f:(resolve_expr ~vars) in
-    Located.create { Ast.Decl.name = unique_name; init } ~location:(Located.location decl)
+let resolve_decl decl ~env =
+  let { Ast.Decl.name = source_name; init } = Located.value decl in
+  match Variable_environment.declare env ~source_name with
+  | Duplicate ->
+    Error_helpers.raise_at decl [%string "duplicate variable declaration %{source_name}"]
+  | Declared resolved_name ->
+    let init = Or_null.map init ~f:(resolve_expr ~env) in
+    Located.map decl ~f:(stack_ fun _ -> { Ast.Decl.name = resolved_name; init })
+    [@nontail]
 ;;
 
-let rec resolve_stmt stmt ~vars =
+let rec resolve_stmt stmt ~env =
   match Located.value stmt with
   | Ast.Stmt.Return expr ->
-    Located.create
-      (Ast.Stmt.Return (resolve_expr expr ~vars))
-      ~location:(Located.location stmt)
+    Located.map stmt ~f:(stack_ fun _ -> Ast.Stmt.Return (resolve_expr expr ~env))
+    [@nontail]
   | Expr expr ->
-    Located.create
-      (Ast.Stmt.Expr (resolve_expr expr ~vars))
-      ~location:(Located.location stmt)
+    Located.map stmt ~f:(stack_ fun _ -> Ast.Stmt.Expr (resolve_expr expr ~env))
+    [@nontail]
   | If { cond; then_; else_ } ->
-    Located.create
-      (Ast.Stmt.If
-         { cond = resolve_expr cond ~vars
-         ; then_ = resolve_stmt then_ ~vars
-         ; else_ = Or_null.map else_ ~f:(resolve_stmt ~vars)
-         })
-      ~location:(Located.location stmt)
+    Located.map stmt ~f:(stack_ fun _ ->
+      Ast.Stmt.If
+        { cond = resolve_expr cond ~env
+        ; then_ = resolve_stmt then_ ~env
+        ; else_ = Or_null.map else_ ~f:(resolve_stmt ~env)
+        })
+    [@nontail]
   | Label { lbl; stmt = inner } ->
-    Located.create
-      (Ast.Stmt.Label { lbl; stmt = resolve_stmt inner ~vars })
-      ~location:(Located.location stmt)
+    Located.map stmt ~f:(stack_ fun _ ->
+      Ast.Stmt.Label { lbl; stmt = resolve_stmt inner ~env })
+    [@nontail]
   | Goto _ | Null -> stmt
 ;;
 
-let resolve_block_item block_item ~vars ~temp_vars =
-  match Located.value block_item with
-  | Ast.Block_item.Decl decl ->
-    let decl = resolve_decl decl ~vars ~temp_vars in
-    Located.create (Ast.Block_item.Decl decl) ~location:(Located.location block_item)
-  | Stmt stmt ->
-    let stmt = resolve_stmt stmt ~vars in
-    Located.create (Ast.Block_item.Stmt stmt) ~location:(Located.location block_item)
+let resolve_block_item block_item ~env =
+  Located.map block_item ~f:(stack_ function
+    | Ast.Block_item.Decl decl -> Ast.Block_item.Decl (resolve_decl decl ~env)
+    | Stmt stmt -> Ast.Block_item.Stmt (resolve_stmt stmt ~env))
+    [@nontail]
 ;;
 
-let resolve_fun_def fun_def ~vars ~temp_vars =
-  let { Ast.Fun_def.name; body } = Located.value fun_def in
-  let new_body = Vec.create () ~initial_capacity:(Vec.length body) in
-  Vec.iter body ~f:(stack_ fun block_item ->
-    let block_item = resolve_block_item block_item ~vars ~temp_vars in
-    Vec.push_back new_body block_item);
-  Located.create
-    { Ast.Fun_def.name; body = new_body }
-    ~location:(Located.location fun_def)
+let resolve_fun_def fun_def ~env =
+  Located.map fun_def ~f:(stack_ fun { Ast.Fun_def.name; body } ->
+    let resolved_body = Vec.create () ~initial_capacity:(Vec.length body) in
+    Vec.iter body ~f:(stack_ fun block_item ->
+      Vec.push_back resolved_body (resolve_block_item block_item ~env));
+    { Ast.Fun_def.name; body = resolved_body })
+  [@nontail]
 ;;
 
 let program (prog : Ast.Prog.t) =
-  let fun_def = Located.value prog in
-  let vars = String.Table.create () in
-  let temp_vars = Temp.create () in
-  let fun_def = resolve_fun_def fun_def ~vars ~temp_vars in
-  Located.create fun_def ~location:(Located.location prog)
+  let env = Variable_environment.create () in
+  Located.map prog ~f:(stack_ fun fun_def -> resolve_fun_def fun_def ~env) [@nontail]
 ;;

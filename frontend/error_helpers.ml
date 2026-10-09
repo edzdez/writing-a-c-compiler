@@ -7,3 +7,9 @@ let raise_error msg ~position =
   in
   failwith [%string "%{location}: %{msg}"]
 ;;
+
+let raise_at located msg =
+  raise_error
+    msg
+    ~position:(located |> Source.Located.location |> Source.Location.start_position)
+;;
