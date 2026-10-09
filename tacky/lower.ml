@@ -31,6 +31,8 @@ module Builder = struct
   let loop_start_label id = [%string "start.%{Ast.Control_id.to_string id}"]
   let break_label id = [%string "break.%{Ast.Control_id.to_string id}"]
   let continue_label id = [%string "continue.%{Ast.Control_id.to_string id}"]
+  let default_label id = [%string "case.default.%{Ast.Control_id.to_string id}"]
+  let case_label id value = [%string "case.%{value#Int}.%{Ast.Control_id.to_string id}"]
   let finish t = Vec.to_iarray t.instructions
 end
 
@@ -267,8 +269,34 @@ let rec lower_stmt stmt ~builder =
     Or_null.iter post ~f:(stack_ fun post -> ignore (lower_expr post ~builder));
     Builder.emit builder (Ir.Instr.Jmp (Builder.loop_start_label id));
     Builder.emit builder (Ir.Instr.Label (Builder.break_label id))
+  | Case { value; body; id } ->
+    let id = Or_null.value_exn id in
+    let value =
+      match Located.value value with
+      | Ast.Expr.Const value -> value
+      | _ -> raise_s [%message "non constant expression case" (value : Ast.Expr.t)]
+    in
+    Builder.emit builder (Ir.Instr.Label (Builder.case_label id value));
+    lower_stmt body ~builder
+  | Default { body; id } ->
+    let id = Or_null.value_exn id in
+    Builder.emit builder (Ir.Instr.Label (Builder.default_label id));
+    lower_stmt body ~builder
+  | Switch { cases; cond; body; id } ->
+    let id = Or_null.value_exn id in
+    let value = lower_expr cond ~builder in
+    let tst = Builder.fresh_temporary builder in
+    Ast.Switch_cases.iter cases ~f:(stack_ fun case ->
+      Builder.emit
+        builder
+        (Ir.Instr.Binary { op = Eq; left = value; right = Constant case; dst = tst });
+      Builder.emit builder (Ir.Instr.Jnz { tst; tgt = Builder.case_label id case }));
+    if Ast.Switch_cases.has_default cases
+    then Builder.emit builder (Ir.Instr.Jmp (Builder.default_label id))
+    else Builder.emit builder (Ir.Instr.Jmp (Builder.break_label id));
+    lower_stmt body ~builder;
+    Builder.emit builder (Ir.Instr.Label (Builder.break_label id))
   | Null -> ()
-  | _ -> failwith "todo"
 
 and lower_block_item block_item ~builder =
   match Located.value block_item with
