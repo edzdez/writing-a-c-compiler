@@ -201,6 +201,12 @@ let lower_for_init for_init ~builder =
     Or_null.iter expr ~f:(stack_ fun expr -> ignore (lower_expr expr ~builder)) [@nontail]
 ;;
 
+let resolved_id node id =
+  match id with
+  | This id -> id
+  | Null -> raise_s [%message "unresolved control-flow ID" (node : Ast.Stmt.t)]
+;;
+
 let rec lower_stmt stmt ~builder =
   match Located.value stmt with
   | Ast.Stmt.Return expr ->
@@ -222,15 +228,19 @@ let rec lower_stmt stmt ~builder =
       Builder.emit builder (Ir.Instr.Label else_lbl);
       lower_stmt else_ ~builder);
     Builder.emit builder (Ir.Instr.Label end_lbl)
-  | Label { lbl; stmt } ->
+  | Label { lbl; body } ->
     Builder.emit builder (Ir.Instr.Label lbl);
-    lower_stmt stmt ~builder
+    lower_stmt body ~builder
   | Compound block -> lower_block block ~builder
   | Goto lbl -> Builder.emit builder (Ir.Instr.Jmp lbl)
-  | Break loop_id -> Builder.emit builder (Ir.Instr.Jmp (Builder.break_label loop_id))
-  | Continue loop_id ->
-    Builder.emit builder (Ir.Instr.Jmp (Builder.continue_label loop_id))
+  | Break id ->
+    let id = resolved_id stmt id in
+    Builder.emit builder (Ir.Instr.Jmp (Builder.break_label id))
+  | Continue id ->
+    let id = resolved_id stmt id in
+    Builder.emit builder (Ir.Instr.Jmp (Builder.continue_label id))
   | While { cond; body; id } ->
+    let id = resolved_id stmt id in
     Builder.emit builder (Ir.Instr.Label (Builder.continue_label id));
     let tst = lower_expr cond ~builder in
     Builder.emit builder (Ir.Instr.Jz { tst; tgt = Builder.break_label id });
@@ -238,6 +248,7 @@ let rec lower_stmt stmt ~builder =
     Builder.emit builder (Ir.Instr.Jmp (Builder.continue_label id));
     Builder.emit builder (Ir.Instr.Label (Builder.break_label id))
   | Do_while { body; cond; id } ->
+    let id = resolved_id stmt id in
     Builder.emit builder (Ir.Instr.Label (Builder.loop_start_label id));
     lower_stmt body ~builder;
     Builder.emit builder (Ir.Instr.Label (Builder.continue_label id));
@@ -245,6 +256,7 @@ let rec lower_stmt stmt ~builder =
     Builder.emit builder (Ir.Instr.Jnz { tst; tgt = Builder.loop_start_label id });
     Builder.emit builder (Ir.Instr.Label (Builder.break_label id))
   | For { init; cond; post; body; id } ->
+    let id = resolved_id stmt id in
     lower_for_init init ~builder;
     Builder.emit builder (Ir.Instr.Label (Builder.loop_start_label id));
     Or_null.iter cond ~f:(stack_ fun cond ->
@@ -256,6 +268,7 @@ let rec lower_stmt stmt ~builder =
     Builder.emit builder (Ir.Instr.Jmp (Builder.loop_start_label id));
     Builder.emit builder (Ir.Instr.Label (Builder.break_label id))
   | Null -> ()
+  | _ -> failwith "todo"
 
 and lower_block_item block_item ~builder =
   match Located.value block_item with

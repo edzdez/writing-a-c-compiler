@@ -54,5 +54,8 @@ type t =
   | For
   | Break
   | Continue
+  | Switch
+  | Case
+  | Default
   | Eof
 [@@deriving compare, equal, sexp]

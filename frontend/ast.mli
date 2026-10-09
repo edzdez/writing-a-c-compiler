@@ -92,6 +92,14 @@ module For_init : sig
   [@@deriving sexp_of]
 end
 
+module Switch_cases : sig
+  type t =
+    { values : Int.Hash_set.t
+    ; mutable has_default : bool
+    }
+  [@@deriving sexp_of]
+end
+
 module rec Stmt : sig
   type t = node Source.Located.t
 
@@ -105,28 +113,43 @@ module rec Stmt : sig
         }
     | Label of
         { lbl : string
-        ; stmt : t
+        ; body : t
         }
     | Goto of string
     | Compound of Block.t
-    | Break of string
-    | Continue of string
+    | Break of string or_null
+    | Continue of string or_null
     | While of
         { cond : Expr.t
         ; body : t
-        ; id : string
+        ; id : string or_null
         }
     | Do_while of
         { body : t
         ; cond : Expr.t
-        ; id : string
+        ; id : string or_null
         }
     | For of
         { init : For_init.t
         ; cond : Expr.t or_null
         ; post : Expr.t or_null
         ; body : t
-        ; id : string
+        ; id : string or_null
+        }
+    | Case of
+        { value : Expr.t
+        ; body : t
+        ; id : string or_null
+        }
+    | Default of
+        { body : t
+        ; id : string or_null
+        }
+    | Switch of
+        { cases : Switch_cases.t
+        ; cond : Expr.t
+        ; body : t
+        ; id : string or_null
         }
     | Null
   [@@deriving sexp_of]

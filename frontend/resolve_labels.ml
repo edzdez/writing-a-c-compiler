@@ -9,11 +9,11 @@ let gather_labels body =
   let labels = String.Table.create () in
   let rec local_ gather_labels stmt =
     match Located.value stmt with
-    | Ast.Stmt.Label { lbl; stmt = inner } ->
+    | Ast.Stmt.Label { lbl; body } ->
       (match Hashtbl.mem labels lbl with
        | true -> Error_helpers.raise_at stmt [%string "duplicate label %{lbl}"]
        | false -> Hashtbl.add_exn labels ~key:lbl ~data:(fresh_label fresh_ids));
-      gather_labels inner
+      gather_labels body
     | If { cond = _; then_; else_ } ->
       gather_labels then_;
       Or_null.iter else_ ~f:(stack_ fun else_ -> gather_labels else_) [@nontail]
@@ -27,6 +27,9 @@ let gather_labels body =
     | While { cond; body; id } -> gather_labels body
     | Do_while { body; cond; id } -> gather_labels body
     | For { init; cond; post; body; id } -> gather_labels body
+    | Case { value = _; body; id = _ } -> gather_labels body
+    | Default { body; id = _ } -> gather_labels body
+    | Switch { cases = _; cond = _; body; id = _ } -> gather_labels body
     | Break _ | Continue _ | Return _ | Expr _ | Goto _ | Null -> ()
   in
   Vec.iter body ~f:(stack_ fun block_item ->
@@ -38,10 +41,10 @@ let gather_labels body =
 
 let rec resolve_stmt stmt ~labels =
   match Located.value stmt with
-  | Ast.Stmt.Label { lbl; stmt = inner } ->
+  | Ast.Stmt.Label { lbl; body } ->
     let lbl = Hashtbl.find_exn labels lbl in
     Located.map stmt ~f:(stack_ fun _ ->
-      Ast.Stmt.Label { lbl; stmt = resolve_stmt inner ~labels })
+      Ast.Stmt.Label { lbl; body = resolve_stmt body ~labels })
     [@nontail]
   | Goto lbl ->
     (match Hashtbl.find_or_null labels lbl with
@@ -69,6 +72,18 @@ let rec resolve_stmt stmt ~labels =
   | For { init; cond; post; body; id } ->
     Located.map stmt ~f:(stack_ fun _ ->
       Ast.Stmt.For { init; cond; post; body = resolve_stmt body ~labels; id })
+    [@nontail]
+  | Case { value; body; id } ->
+    Located.map stmt ~f:(stack_ fun _ ->
+      Ast.Stmt.Case { value; body = resolve_stmt body ~labels; id })
+    [@nontail]
+  | Default { body; id } ->
+    Located.map stmt ~f:(stack_ fun _ ->
+      Ast.Stmt.Default { body = resolve_stmt body ~labels; id })
+    [@nontail]
+  | Switch { cases; cond; body; id } ->
+    Located.map stmt ~f:(stack_ fun _ ->
+      Ast.Stmt.Switch { cases; cond; body = resolve_stmt body ~labels; id })
     [@nontail]
   | Break _ | Continue _ | Return _ | Expr _ | Null -> stmt
 

@@ -20,6 +20,9 @@ let ident_or_keyword lexbuf =
   | "for" -> For
   | "break" -> Break
   | "continue" -> Continue
+  | "switch" -> Switch
+  | "case" -> Case
+  | "default" -> Default
   | ident -> Ident ident
 
 let constant lexbuf =

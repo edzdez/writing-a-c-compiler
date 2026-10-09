@@ -327,11 +327,11 @@ let rec parse_stmt token_stream =
     when Token.equal (Located.value (Token_stream.peek token_stream ~distance:1)) Colon ->
     ignore (Token_stream.pop token_stream);
     let colon = expect token_stream Colon in
-    let stmt = parse_stmt token_stream in
+    let body = parse_stmt token_stream in
     let location =
       Source.Location.between (Located.location token) (Located.location colon)
     in
-    Located.create (Stmt.Label { lbl; stmt }) ~location
+    Located.create (Stmt.Label { lbl; body }) ~location
   | Open_brace ->
     let block = parse_block token_stream in
     Located.map block ~f:(stack_ fun _ -> Ast.Stmt.Compound block) [@nontail]
@@ -341,14 +341,14 @@ let rec parse_stmt token_stream =
     let location =
       Source.Location.between (Located.location token) (Located.location semicolon)
     in
-    Located.create (Stmt.Break "DUMMY") ~location
+    Located.create (Stmt.Break Null) ~location
   | Continue ->
     ignore (Token_stream.pop token_stream);
     let semicolon = expect token_stream Semicolon in
     let location =
       Source.Location.between (Located.location token) (Located.location semicolon)
     in
-    Located.create (Stmt.Continue "DUMMY") ~location
+    Located.create (Stmt.Continue Null) ~location
   | While ->
     ignore (Token_stream.pop token_stream);
     ignore (expect token_stream Open_paren);
@@ -358,7 +358,7 @@ let rec parse_stmt token_stream =
     let location =
       Source.Location.between (Located.location token) (Located.location body)
     in
-    Located.create (Stmt.While { cond; body; id = "DUMMY" }) ~location
+    Located.create (Stmt.While { cond; body; id = Null }) ~location
   | Do ->
     ignore (Token_stream.pop token_stream);
     let body = parse_stmt token_stream in
@@ -370,7 +370,7 @@ let rec parse_stmt token_stream =
     let location =
       Source.Location.between (Located.location token) (Located.location semicolon)
     in
-    Located.create (Stmt.Do_while { body; cond; id = "DUMMY" }) ~location
+    Located.create (Stmt.Do_while { body; cond; id = Null }) ~location
   | For ->
     ignore (Token_stream.pop token_stream);
     let #(~init, ~cond, ~post) = parse_for_control token_stream in
@@ -378,7 +378,41 @@ let rec parse_stmt token_stream =
     let location =
       Source.Location.between (Located.location token) (Located.location body)
     in
-    Located.create (Stmt.For { init; cond; post; body; id = "DUMMY" }) ~location
+    Located.create (Stmt.For { init; cond; post; body; id = Null }) ~location
+  | Case ->
+    ignore (Token_stream.pop token_stream);
+    let value = parse_expr token_stream ~min_precedence:0 in
+    ignore (expect token_stream Colon);
+    let body = parse_stmt token_stream in
+    let location =
+      Source.Location.between (Located.location token) (Located.location body)
+    in
+    Located.create (Stmt.Case { value; body; id = Null }) ~location
+  | Default ->
+    ignore (Token_stream.pop token_stream);
+    ignore (expect token_stream Colon);
+    let body = parse_stmt token_stream in
+    let location =
+      Source.Location.between (Located.location token) (Located.location body)
+    in
+    Located.create (Stmt.Default { body; id = Null }) ~location
+  | Switch ->
+    ignore (Token_stream.pop token_stream);
+    ignore (expect token_stream Open_paren);
+    let cond = parse_expr token_stream ~min_precedence:0 in
+    ignore (expect token_stream Close_paren);
+    let body = parse_stmt token_stream in
+    let location =
+      Source.Location.between (Located.location token) (Located.location body)
+    in
+    Located.create
+      (Stmt.Switch
+         { cases = { Switch_cases.values = Int.Hash_set.create (); has_default = false }
+         ; cond
+         ; body
+         ; id = Null
+         })
+      ~location
   | _ ->
     let expr = parse_expr token_stream ~min_precedence:0 in
     let semicolon = expect token_stream Semicolon in

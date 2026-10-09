@@ -98,9 +98,9 @@ let rec resolve_stmt stmt ~env =
         ; else_ = Or_null.map else_ ~f:(resolve_stmt ~env)
         })
     [@nontail]
-  | Label { lbl; stmt = inner } ->
+  | Label { lbl; body } ->
     Located.map stmt ~f:(stack_ fun _ ->
-      Ast.Stmt.Label { lbl; stmt = resolve_stmt inner ~env })
+      Ast.Stmt.Label { lbl; body = resolve_stmt body ~env })
     [@nontail]
   | Compound block ->
     Located.map block ~f:(stack_ fun _ -> Ast.Stmt.Compound (resolve_block block ~env))
@@ -129,6 +129,19 @@ let rec resolve_stmt stmt ~env =
       in
       Variable_env.close_scope env;
       for_)
+    [@nontail]
+  | Case { value; body; id } ->
+    Located.map stmt ~f:(stack_ fun _ ->
+      Ast.Stmt.Case { value = resolve_expr value ~env; body = resolve_stmt body ~env; id })
+    [@nontail]
+  | Default { body; id } ->
+    Located.map stmt ~f:(stack_ fun _ ->
+      Ast.Stmt.Default { body = resolve_stmt body ~env; id })
+    [@nontail]
+  | Switch { cases; cond; body; id } ->
+    Located.map stmt ~f:(stack_ fun _ ->
+      Ast.Stmt.Switch
+        { cases; cond = resolve_expr cond ~env; body = resolve_stmt body ~env; id })
     [@nontail]
   | Break _ | Continue _ | Goto _ | Null -> stmt
 

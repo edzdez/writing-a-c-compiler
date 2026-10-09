@@ -1,4 +1,4 @@
-(** Label loops and validate the uses of their associated control flow. *)
+(** Assign a unique ID to each loop. *)
 open! Core
 
 val program : Ast.Prog.t -> Ast.Prog.t
