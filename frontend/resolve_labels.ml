@@ -101,14 +101,18 @@ and resolve_block block ~labels =
   [@nontail]
 ;;
 
-let resolve_fun_def fun_def =
-  Located.map fun_def ~f:(stack_ fun { Ast.Fun_def.name; body } ->
-    let labels = gather_labels body in
-    let body = resolve_block body ~labels in
-    { Ast.Fun_def.name; body })
+let resolve_fun_decl fun_decl =
+  Located.map fun_decl ~f:(stack_ fun { Ast.Fun_decl.name; params; body } ->
+    let body =
+      Or_null.map body ~f:(stack_ fun body ->
+        let labels = gather_labels body in
+        resolve_block body ~labels)
+    in
+    { Ast.Fun_decl.name; params; body })
   [@nontail]
 ;;
 
 let program (prog : Ast.Prog.t) =
-  Located.map prog ~f:(stack_ fun fun_def -> resolve_fun_def fun_def) [@nontail]
+  Located.map prog ~f:(stack_ fun fun_decls -> Iarray.map fun_decls ~f:resolve_fun_decl)
+  [@nontail]
 ;;

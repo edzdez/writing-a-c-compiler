@@ -38,6 +38,13 @@ let rec resolve_expr expr ~env =
       Ast.Expr.Compound_assign
         { op; left = resolve_expr left ~env; right = resolve_expr right ~env })
     [@nontail]
+  | Function_call { name; args } ->
+    (match Ident_env.find env name with
+     | Null -> Error_helpers.raise_at expr [%string "undeclared function %{name}"]
+     | This name ->
+       let args = Iarray.map args ~f:(stack_ fun arg -> resolve_expr arg ~env) in
+       Located.map expr ~f:(stack_ fun _ -> Ast.Expr.Function_call { name; args })
+       [@nontail])
   | Conditional { cond; then_; else_ } ->
     Located.map expr ~f:(stack_ fun _ ->
       Ast.Expr.Conditional
@@ -47,7 +54,7 @@ let rec resolve_expr expr ~env =
         })
     [@nontail]
   | Var source_name ->
-    (match Variable_env.find env source_name with
+    (match Ident_env.find env source_name with
      | Null -> Error_helpers.raise_at expr [%string "undeclared variable %{source_name}"]
      | This resolved_name ->
        Located.map expr ~f:(stack_ fun _ -> Ast.Expr.Var resolved_name) [@nontail])
@@ -64,20 +71,20 @@ let rec resolve_expr expr ~env =
   | Const _ -> expr
 ;;
 
-let resolve_decl decl ~env =
-  let { Ast.Decl.name = source_name; init } = Located.value decl in
-  match Variable_env.declare env ~source_name with
+let resolve_var_decl decl ~env =
+  let { Ast.Var_decl.name = source_name; init } = Located.value decl in
+  match Ident_env.declare_var env ~source_name with
   | `Duplicate ->
     Error_helpers.raise_at decl [%string "duplicate variable declaration %{source_name}"]
   | `Declared resolved_name ->
     let init = Or_null.map init ~f:(resolve_expr ~env) in
-    Located.map decl ~f:(stack_ fun _ -> { Ast.Decl.name = resolved_name; init })
+    Located.map decl ~f:(stack_ fun _ -> { Ast.Var_decl.name = resolved_name; init })
     [@nontail]
 ;;
 
 let resolve_for_init for_init ~env =
   Located.map for_init ~f:(stack_ function
-    | Ast.For_init.Decl decl -> Ast.For_init.Decl (resolve_decl decl ~env)
+    | Ast.For_init.Decl decl -> Ast.For_init.Decl (resolve_var_decl decl ~env)
     | Expr expr -> Expr (Or_null.map expr ~f:(stack_ fun expr -> resolve_expr expr ~env)))
     [@nontail]
 ;;
@@ -103,7 +110,11 @@ let rec resolve_stmt stmt ~env =
       Ast.Stmt.Label { lbl; body = resolve_stmt body ~env })
     [@nontail]
   | Compound block ->
-    Located.map block ~f:(stack_ fun _ -> Ast.Stmt.Compound (resolve_block block ~env))
+    Located.map block ~f:(stack_ fun _ ->
+      Ident_env.open_scope env;
+      let block = resolve_block block ~env in
+      Ident_env.close_scope env;
+      Ast.Stmt.Compound block)
     [@nontail]
   | While { cond; body; id } ->
     Located.map stmt ~f:(stack_ fun _ ->
@@ -116,7 +127,7 @@ let rec resolve_stmt stmt ~env =
     [@nontail]
   | For { init; cond; post; body; id } ->
     Located.map stmt ~f:(stack_ fun _ ->
-      Variable_env.open_scope env;
+      Ident_env.open_scope env;
       let init = resolve_for_init init ~env in
       let for_ =
         Ast.Stmt.For
@@ -127,7 +138,7 @@ let rec resolve_stmt stmt ~env =
           ; id
           }
       in
-      Variable_env.close_scope env;
+      Ident_env.close_scope env;
       for_)
     [@nontail]
   | Case { value; body; id } ->
@@ -147,27 +158,59 @@ let rec resolve_stmt stmt ~env =
 
 and resolve_block_item block_item ~env =
   Located.map block_item ~f:(stack_ function
-    | Ast.Block_item.Decl decl -> Ast.Block_item.Decl (resolve_decl decl ~env)
+    | Ast.Block_item.Decl decl ->
+      Ast.Block_item.Decl
+        (match Located.value decl with
+         | Ast.Decl.Var_decl var_decl ->
+           Located.map decl ~f:(stack_ fun _ ->
+             Ast.Decl.Var_decl (resolve_var_decl var_decl ~env))
+           [@nontail]
+         | Fun_decl fun_decl ->
+           Located.map decl ~f:(stack_ fun _ ->
+             Ast.Decl.Fun_decl (resolve_fun_decl fun_decl ~local:true ~env)))
     | Stmt stmt -> Ast.Block_item.Stmt (resolve_stmt stmt ~env))
     [@nontail]
 
 and resolve_block block ~env =
   Located.map block ~f:(stack_ fun body ->
-    Variable_env.open_scope env;
     let resolved_body = Iarray.map body ~f:(fun item -> resolve_block_item item ~env) in
-    Variable_env.close_scope env;
     resolved_body)
   [@nontail]
-;;
 
-let resolve_fun_def fun_def ~env =
-  Located.map fun_def ~f:(stack_ fun { Ast.Fun_def.name; body } ->
-    let body = resolve_block body ~env in
-    { Ast.Fun_def.name; body })
+and resolve_fun_decl fun_decl ~local ~env =
+  let local_ resolve_param param ~fun_decl ~env =
+    match Ident_env.declare_var env ~source_name:param with
+    | `Duplicate ->
+      Error_helpers.raise_at fun_decl [%string "duplicate parameter declaration %{param}"]
+    | `Declared resolved_name -> resolved_name
+  in
+  Located.map fun_decl ~f:(stack_ fun { Ast.Fun_decl.name; params; body } ->
+    let name =
+      match Ident_env.declare_fun env ~source_name:name with
+      | `Duplicate ->
+        Error_helpers.raise_at fun_decl [%string "duplicate function declaration %{name}"]
+      | `Declared name -> name
+    in
+    Ident_env.open_scope env;
+    let params =
+      Iarray.map params ~f:(stack_ fun param -> resolve_param param ~fun_decl ~env)
+    in
+    let body =
+      Or_null.map body ~f:(stack_ fun body ->
+        if local
+        then Error_helpers.raise_at fun_decl "local function declaration with body"
+        else resolve_block body ~env)
+    in
+    Ident_env.close_scope env;
+    { Ast.Fun_decl.name; params; body })
   [@nontail]
 ;;
 
 let program (prog : Ast.Prog.t) =
-  let env = Variable_env.create () in
-  Located.map prog ~f:(stack_ fun fun_def -> resolve_fun_def fun_def ~env) [@nontail]
+  let env = Ident_env.create () in
+  Located.map prog ~f:(stack_ fun fun_decls ->
+    Iarray.map fun_decls ~f:(stack_ fun fun_decl ->
+      resolve_fun_decl fun_decl ~local:false ~env)
+    [@nontail])
+  [@nontail]
 ;;

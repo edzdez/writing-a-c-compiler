@@ -196,7 +196,17 @@ and parse_primary token_stream =
     Located.create (Expr.Const constant) ~location:(Located.location token)
   | Ident ident ->
     ignore (Token_stream.pop token_stream);
-    Located.create (Expr.Var ident) ~location:(Located.location token)
+    let next_token = Token_stream.peek token_stream ~distance:0 in
+    (match Located.value next_token with
+     | Open_paren ->
+       ignore (Token_stream.pop token_stream);
+       let args = parse_arg_list token_stream in
+       let close_paren = expect token_stream Close_paren in
+       let location =
+         Source.Location.between (Located.location token) (Located.location close_paren)
+       in
+       Located.create (Expr.Function_call { name = ident; args }) ~location
+     | _ -> Located.create (Expr.Var ident) ~location:(Located.location token))
   | Open_paren ->
     let open_paren = Token_stream.pop token_stream in
     let expr = parse_expr token_stream ~min_precedence:0 in
@@ -212,9 +222,28 @@ and parse_conditional_then token_stream =
   let expr = parse_expr token_stream ~min_precedence:0 in
   ignore (expect token_stream Colon);
   expr
+
+and parse_arg_list token_stream =
+  let args = Vec.create () in
+  let mutable is_arg =
+    let token = Token_stream.peek token_stream ~distance:0 in
+    match Located.value token with
+    | Close_paren -> false
+    | _ -> true
+  in
+  while is_arg do
+    let arg = parse_expr token_stream ~min_precedence:0 in
+    Vec.push_back args arg;
+    let token = Token_stream.peek token_stream ~distance:0 in
+    match Located.value token with
+    | Comma -> ignore (Token_stream.pop token_stream)
+    | Close_paren -> is_arg <- false
+    | _ -> raise_error token ~expected:"a comma or close paren"
+  done;
+  Vec.to_iarray args
 ;;
 
-let parse_decl token_stream =
+let parse_var_decl token_stream =
   let int = expect token_stream Int in
   let name =
     let token = Token_stream.pop token_stream in
@@ -231,21 +260,54 @@ let parse_decl token_stream =
     let location =
       Source.Location.between (Located.location int) (Located.location semicolon)
     in
-    Located.create { Decl.name; init = This init } ~location
+    Located.create { Var_decl.name; init = This init } ~location
   | Semicolon ->
     let semicolon = expect token_stream Semicolon in
     let location =
       Source.Location.between (Located.location int) (Located.location semicolon)
     in
-    Located.create { Decl.name; init = Null } ~location
+    Located.create { Var_decl.name; init = Null } ~location
   | _ -> raise_error token ~expected:"Eq or Semicolon"
+;;
+
+let parse_param token_stream =
+  ignore (expect token_stream Int);
+  let name =
+    let token = Token_stream.pop token_stream in
+    match Located.value token with
+    | Ident name -> name
+    | _ -> raise_error token ~expected:"an identifier"
+  in
+  name
+;;
+
+let parse_param_list token_stream =
+  let token = Token_stream.peek token_stream ~distance:0 in
+  match Located.value token with
+  | Void ->
+    ignore (Token_stream.pop token_stream);
+    Iarray.empty
+  | Int ->
+    let params = Vec.create () in
+    let mutable is_param = true in
+    while is_param do
+      let param = parse_param token_stream in
+      Vec.push_back params param;
+      let token = Token_stream.peek token_stream ~distance:0 in
+      match Located.value token with
+      | Comma -> ignore (Token_stream.pop token_stream)
+      | Close_paren -> is_param <- false
+      | _ -> raise_error token ~expected:"a comma or close paren"
+    done;
+    Vec.to_iarray params
+  | _ -> raise_error token ~expected:"[void] or [int]"
 ;;
 
 let parse_for_init token_stream =
   let token = Token_stream.peek token_stream ~distance:0 in
   match Located.value token with
   | Int ->
-    let decl = parse_decl token_stream in
+    let decl = parse_var_decl token_stream in
     Located.map decl ~f:(stack_ fun _ -> For_init.Decl decl) [@nontail]
   | Semicolon ->
     ignore (Token_stream.pop token_stream);
@@ -420,7 +482,7 @@ and parse_block_item token_stream =
   match Located.value (Token_stream.peek token_stream ~distance:0) with
   | Int ->
     let decl = parse_decl token_stream in
-    Located.create (Block_item.Decl decl) ~location:(Located.location decl)
+    Located.map decl ~f:(stack_ fun _ -> Block_item.Decl decl) [@nontail]
   | _ ->
     let stmt = parse_stmt token_stream in
     Located.create (Block_item.Stmt stmt) ~location:(Located.location stmt)
@@ -442,9 +504,19 @@ and parse_block token_stream =
     Source.Location.between (Located.location open_brace) (Located.location close_brace)
   in
   Located.create (Vec.to_iarray block) ~location
-;;
 
-let parse_fun_def token_stream =
+and parse_decl token_stream =
+  let token = Token_stream.peek token_stream ~distance:2 in
+  match Located.value token with
+  | Open_paren ->
+    let fun_decl = parse_fun_decl token_stream in
+    Located.map fun_decl ~f:(stack_ fun _ -> Decl.Fun_decl fun_decl) [@nontail]
+  | Eq | Semicolon ->
+    let var_decl = parse_var_decl token_stream in
+    Located.map var_decl ~f:(stack_ fun _ -> Decl.Var_decl var_decl) [@nontail]
+  | _ -> raise_error token ~expected:"an open parenthesis, equals sign, or semicolon"
+
+and parse_fun_decl token_stream =
   let int = expect token_stream Int in
   let name =
     let token = Token_stream.pop token_stream in
@@ -453,15 +525,38 @@ let parse_fun_def token_stream =
     | _ -> raise_error token ~expected:"an identifier"
   in
   ignore (expect token_stream Open_paren);
-  ignore (expect token_stream Void);
+  let params = parse_param_list token_stream in
   ignore (expect token_stream Close_paren);
-  let body = parse_block token_stream in
-  let location = Source.Location.between (Located.location int) (Located.location body) in
-  Located.create { Fun_def.name; body } ~location
+  let #(body, body_location) =
+    let token = Token_stream.peek token_stream ~distance:0 in
+    match Located.value token with
+    | Semicolon ->
+      let semicolon = expect token_stream Semicolon in
+      #(Null, Located.location semicolon)
+    | _ ->
+      let block = parse_block token_stream in
+      #(This block, Located.location block)
+  in
+  let location = Source.Location.between (Located.location int) body_location in
+  Located.create { Fun_decl.name; params; body } ~location
 ;;
 
 let parse token_stream =
-  let fun_def = parse_fun_def token_stream in
+  let first_fun_decl = parse_fun_decl token_stream in
+  let mutable last_fun_decl = first_fun_decl in
+  let fun_decls = Vec.of_array [| first_fun_decl |] in
+  while
+    not (Token.equal (Located.value (Token_stream.peek token_stream ~distance:0)) Eof)
+  do
+    let fun_decl = parse_fun_decl token_stream in
+    Vec.push_back fun_decls fun_decl;
+    last_fun_decl <- fun_decl
+  done;
   ignore (expect token_stream Eof);
-  Located.create fun_def ~location:(Located.location fun_def)
+  let location =
+    Source.Location.between
+      (Located.location first_fun_decl)
+      (Located.location last_fun_decl)
+  in
+  Located.create (Vec.to_iarray fun_decls) ~location
 ;;

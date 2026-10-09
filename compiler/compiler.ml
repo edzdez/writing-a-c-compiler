@@ -30,7 +30,12 @@ let compile_exn ~stop_after ~input_file ~assembly_file =
     | Stage.Lex -> lex_to_end lexbuf
     | Parse -> lexbuf |> parse |> print_ast
     | Validate -> lexbuf |> analyze |> print_ast
-    | Tacky -> lexbuf |> lower_to_tacky |> Tacky.Ir.Prog.sexp_of_t |> print_s
+    | Tacky ->
+      lexbuf
+      |> lower_to_tacky
+      |> Semantics.Compilation_unit.program
+      |> Tacky.Ir.Prog.sexp_of_t
+      |> print_s
     | Codegen ->
       lexbuf |> lower_to_x86 |> X86.Program.ir |> X86.Ir.Prog.sexp_of_t |> print_s
     | Emit | Assemble | Link ->

@@ -57,5 +57,6 @@ type t =
   | Switch
   | Case
   | Default
+  | Comma
   | Eof
 [@@deriving compare, equal, sexp]

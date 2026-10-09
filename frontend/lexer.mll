@@ -83,5 +83,6 @@ rule next = parse
   | '='                    { Token.Eq }
   | '?'                    { Token.Question_mark }
   | ':'                    { Token.Colon }
+  | ','                    { Token.Comma }
   | eof                    { Token.Eof }
   | _                      { raise_error lexbuf }

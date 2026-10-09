@@ -1,5 +1,5 @@
 (library
  (name x86)
- (libraries core tacky vec)
+ (libraries core semantics tacky vec)
  (preprocess
   (pps ppx_jane)))

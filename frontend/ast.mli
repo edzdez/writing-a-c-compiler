@@ -68,12 +68,16 @@ module Expr : sig
         ; then_ : t
         ; else_ : t
         }
+    | Function_call of
+        { name : string
+        ; args : t iarray
+        }
   [@@deriving sexp_of]
 
   val describe : t -> string
 end
 
-module Decl : sig
+module Var_decl : sig
   type t = node Source.Located.t
 
   and node =
@@ -87,7 +91,7 @@ module For_init : sig
   type t = node Source.Located.t
 
   and node =
-    | Decl of Decl.t
+    | Decl of Var_decl.t
     | Expr of Expr.t or_null
   [@@deriving sexp_of]
 end
@@ -110,7 +114,27 @@ module Switch_cases : sig
   val has_default : t -> bool
 end
 
-module rec Stmt : sig
+module rec Fun_decl : sig
+  type t = node Source.Located.t
+
+  and node =
+    { name : string
+    ; params : string iarray
+    ; body : Block.t or_null
+    }
+  [@@deriving sexp_of]
+end
+
+and Decl : sig
+  type t = node Source.Located.t
+
+  and node =
+    | Fun_decl of Fun_decl.t
+    | Var_decl of Var_decl.t
+  [@@deriving sexp_of]
+end
+
+and Stmt : sig
   type t = node Source.Located.t
 
   and node =
@@ -179,17 +203,7 @@ and Block_item : sig
   [@@deriving sexp_of]
 end
 
-module Fun_def : sig
-  type t = node Source.Located.t
-
-  and node =
-    { name : string
-    ; body : Block.t
-    }
-  [@@deriving sexp_of]
-end
-
 module Prog : sig
   type t = node Source.Located.t
-  and node = Fun_def.t [@@deriving sexp_of]
+  and node = Fun_decl.t iarray [@@deriving sexp_of]
 end

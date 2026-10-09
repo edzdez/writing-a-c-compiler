@@ -68,14 +68,17 @@ and label_block block ~context =
   [@nontail]
 ;;
 
-let label_fun_def fun_def =
-  Located.map fun_def ~f:(stack_ fun { Ast.Fun_def.name; body } ->
-    let context = Context.create () in
-    let body = label_block body ~context in
-    { Ast.Fun_def.name; body })
+let label_fun_decl fun_decl =
+  Located.map fun_decl ~f:(stack_ fun { Ast.Fun_decl.name; params; body } ->
+    let body =
+      Or_null.map body ~f:(stack_ fun body ->
+        label_block body ~context:(Context.create ()))
+    in
+    { Ast.Fun_decl.name; params; body })
   [@nontail]
 ;;
 
 let program (prog : Ast.Prog.t) =
-  Located.map prog ~f:(stack_ fun fun_def -> label_fun_def fun_def) [@nontail]
+  Located.map prog ~f:(stack_ fun fun_decls -> Iarray.map fun_decls ~f:label_fun_decl)
+  [@nontail]
 ;;

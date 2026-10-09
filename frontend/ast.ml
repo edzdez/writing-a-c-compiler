@@ -68,6 +68,10 @@ module Expr = struct
         ; then_ : t
         ; else_ : t
         }
+    | Function_call of
+        { name : string
+        ; args : t iarray
+        }
   [@@deriving sexp_of]
 
   let describe t =
@@ -85,26 +89,8 @@ module Expr = struct
     | Assign _ -> "an assignment expression"
     | Compound_assign _ -> "a compound assignment expression"
     | Conditional _ -> "a conditional expression"
+    | Function_call _ -> "a function call"
   ;;
-end
-
-module Decl = struct
-  type t = node Source.Located.t
-
-  and node =
-    { name : string
-    ; init : Expr.t or_null
-    }
-  [@@deriving sexp_of]
-end
-
-module For_init = struct
-  type t = node Source.Located.t
-
-  and node =
-    | Decl of Decl.t
-    | Expr of Expr.t or_null
-  [@@deriving sexp_of]
 end
 
 module Control_id = struct
@@ -147,7 +133,62 @@ module Switch_cases = struct
   let has_default t = t.has_default
 end
 
-module rec Stmt : sig
+module Var_decl = struct
+  type t = node Source.Located.t
+
+  and node =
+    { name : string
+    ; init : Expr.t or_null
+    }
+  [@@deriving sexp_of]
+end
+
+module For_init = struct
+  type t = node Source.Located.t
+
+  and node =
+    | Decl of Var_decl.t
+    | Expr of Expr.t or_null
+  [@@deriving sexp_of]
+end
+
+module rec Fun_decl : sig
+  type t = node Source.Located.t
+
+  and node =
+    { name : string
+    ; params : string iarray
+    ; body : Block.t or_null
+    }
+  [@@deriving sexp_of]
+end = struct
+  type t = node Source.Located.t
+
+  and node =
+    { name : string
+    ; params : string iarray
+    ; body : Block.t or_null
+    }
+  [@@deriving sexp_of]
+end
+
+and Decl : sig
+  type t = node Source.Located.t
+
+  and node =
+    | Fun_decl of Fun_decl.t
+    | Var_decl of Var_decl.t
+  [@@deriving sexp_of]
+end = struct
+  type t = node Source.Located.t
+
+  and node =
+    | Fun_decl of Fun_decl.t
+    | Var_decl of Var_decl.t
+  [@@deriving sexp_of]
+end
+
+and Stmt : sig
   type t = node Source.Located.t
 
   and node =
@@ -279,17 +320,7 @@ end = struct
   and node = Block_item.t iarray [@@deriving sexp_of]
 end
 
-module Fun_def = struct
-  type t = node Source.Located.t
-
-  and node =
-    { name : string
-    ; body : Block.t
-    }
-  [@@deriving sexp_of]
-end
-
 module Prog = struct
   type t = node Source.Located.t
-  and node = Fun_def.t [@@deriving sexp_of]
+  and node = Fun_decl.t iarray [@@deriving sexp_of]
 end

@@ -8,10 +8,11 @@ module Program : sig
   type 'state t
 
   val ir : _ t -> Ir.Prog.t
+  val symbols : _ t -> Semantics.Symbol_table.t
 end
 
 module Select : sig
-  val program : Tacky.Ir.Prog.t -> Program.selected Program.t
+  val program : Tacky.Ir.Prog.t Semantics.Compilation_unit.t -> Program.selected Program.t
 end
 
 module Stack_layout : sig
@@ -23,7 +24,7 @@ module Fixup : sig
 end
 
 module Lower : sig
-  val program : Tacky.Ir.Prog.t -> Program.legal Program.t
+  val program : Tacky.Ir.Prog.t Semantics.Compilation_unit.t -> Program.legal Program.t
 end
 
 module Emit : sig

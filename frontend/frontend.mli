@@ -10,6 +10,7 @@ module Program : sig
   type 'state t
 
   val ast : _ t -> Ast.Prog.t
+  val symbols : validated t -> Semantics.Symbol_table.t
 end
 
 module Parser : sig

@@ -184,10 +184,11 @@ let rec lower_expr expr ~builder =
     Builder.emit builder (Ir.Instr.Copy { dst; src = else_result });
     Builder.emit builder (Ir.Instr.Label end_lbl);
     dst
+  | Function_call _ -> failwith "function calls are not implemented"
 ;;
 
-let lower_decl decl ~builder =
-  let { Ast.Decl.name; init } = Located.value decl in
+let lower_var_decl decl ~builder =
+  let { Ast.Var_decl.name; init } = Located.value decl in
   match init with
   | Null -> ()
   | This expr ->
@@ -198,7 +199,7 @@ let lower_decl decl ~builder =
 
 let lower_for_init for_init ~builder =
   match Located.value for_init with
-  | Ast.For_init.Decl decl -> lower_decl decl ~builder
+  | Ast.For_init.Decl decl -> lower_var_decl decl ~builder
   | Expr expr ->
     Or_null.iter expr ~f:(stack_ fun expr -> ignore (lower_expr expr ~builder)) [@nontail]
 ;;
@@ -300,7 +301,10 @@ let rec lower_stmt stmt ~builder =
 
 and lower_block_item block_item ~builder =
   match Located.value block_item with
-  | Ast.Block_item.Decl decl -> lower_decl decl ~builder
+  | Ast.Block_item.Decl decl ->
+    (match Located.value decl with
+     | Ast.Decl.Var_decl var_decl -> lower_var_decl var_decl ~builder
+     | Fun_decl _ -> failwith "function declarations are not implemented")
   | Stmt stmt -> lower_stmt stmt ~builder
 
 and lower_block block ~builder =
@@ -309,15 +313,22 @@ and lower_block block ~builder =
   [@nontail]
 ;;
 
-let lower_fun_def fun_def ~builder =
-  let { Ast.Fun_def.name; body } = Located.value fun_def in
-  lower_block body ~builder;
-  Builder.emit builder (Ir.Instr.Return (Constant 0));
-  { Ir.Fun_def.name; instrs = Builder.finish builder }
+let lower_fun_decl fun_decl ~builder =
+  let { Ast.Fun_decl.name; params; body } = Located.value fun_decl in
+  match Iarray.is_empty params, body with
+  | false, _ -> failwith "function parameters are not implemented"
+  | true, Null -> failwith "function declarations without bodies are not implemented"
+  | true, This body ->
+    lower_block body ~builder;
+    Builder.emit builder (Ir.Instr.Return (Constant 0));
+    { Ir.Fun_def.name; instrs = Builder.finish builder }
 ;;
 
 let program prog =
   let prog = Located.value prog in
-  let builder = Builder.create () in
-  lower_fun_def prog ~builder
+  match Iarray.length prog with
+  | 1 ->
+    let builder = Builder.create () in
+    lower_fun_decl (Iarray.get prog 0) ~builder
+  | _ -> failwith "multiple function definitions are not implemented"
 ;;

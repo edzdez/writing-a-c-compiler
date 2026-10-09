@@ -9,24 +9,27 @@ module Program = struct
   type selected
   type stack_allocated
   type legal
-  type 'state t = Ir.Prog.t
+  type 'state t = Ir.Prog.t Semantics.Compilation_unit.t
 
-  let ir t = t
+  let ir = Semantics.Compilation_unit.program
+  let symbols = Semantics.Compilation_unit.symbols
 end
 
 module Select = struct
-  let program tacky : Program.selected Program.t = Select_pass.program tacky
+  let program tacky : Program.selected Program.t =
+    Semantics.Compilation_unit.map_program tacky ~f:Select_pass.program
+  ;;
 end
 
 module Stack_layout = struct
   let program (program : Program.selected Program.t) : Program.stack_allocated Program.t =
-    Stack_layout_pass.program program
+    Semantics.Compilation_unit.map_program program ~f:Stack_layout_pass.program
   ;;
 end
 
 module Fixup = struct
   let program (program : Program.stack_allocated Program.t) : Program.legal Program.t =
-    Fixup_pass.program program
+    Semantics.Compilation_unit.map_program program ~f:Fixup_pass.program
   ;;
 end
 
@@ -36,6 +39,6 @@ end
 
 module Emit = struct
   let program (program : Program.legal Program.t) ~writer =
-    Emit_pass.program program ~writer
+    Emit_pass.program (Program.ir program) ~writer
   ;;
 end
