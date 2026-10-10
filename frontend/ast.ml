@@ -113,7 +113,7 @@ module Switch_cases = struct
     { values : Int.Set.t
     ; has_default : bool
     }
-  [@@deriving sexp_of]
+  [@@deriving fields ~getters, sexp_of]
 
   let empty = { values = Int.Set.empty; has_default = false }
 
@@ -130,7 +130,6 @@ module Switch_cases = struct
   ;;
 
   let iter t ~f = Set.iter t.values ~f
-  let has_default t = t.has_default
 end
 
 module Var_decl = struct

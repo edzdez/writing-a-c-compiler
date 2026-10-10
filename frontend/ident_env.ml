@@ -61,3 +61,8 @@ let close_scope t =
       | [] -> raise_s [%message "no open scopes"]
       | _ :: vars -> vars)
 ;;
+
+let with_scope t ~(f @ local) =
+  open_scope t;
+  Exn.protect ~f ~finally:(fun () -> close_scope t)
+;;

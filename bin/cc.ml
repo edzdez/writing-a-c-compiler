@@ -12,8 +12,16 @@ let remove file =
 ;;
 
 let run_gcc_exn args =
-  let process_info = Core_unix.create_process ~prog:"gcc" ~args in
-  Core_unix.waitpid_exn process_info.pid
+  let process =
+    Core_unix.create_process_with_fds
+      ~prog:"gcc"
+      ~args
+      ~stdin:(Use_this Core_unix.stdin)
+      ~stdout:(Use_this Core_unix.stdout)
+      ~stderr:(Use_this Core_unix.stderr)
+      ()
+  in
+  Core_unix.waitpid_exn process.pid
 ;;
 
 let preprocess_exn ~input_file ~output_file =

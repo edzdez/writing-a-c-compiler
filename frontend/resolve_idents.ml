@@ -25,6 +25,13 @@ let validate_unary_lvalue op expr =
   | _ -> ()
 ;;
 
+let resolve_param param ~fun_decl ~env =
+  match Ident_env.declare_var env ~source_name:param with
+  | `Duplicate ->
+    Error_helpers.raise_at fun_decl [%string "duplicate parameter declaration %{param}"]
+  | `Declared resolved_name -> resolved_name
+;;
+
 let rec resolve_expr expr ~env =
   match Located.value expr with
   | Ast.Expr.Assign { left; right } ->
@@ -111,10 +118,9 @@ let rec resolve_stmt stmt ~env =
     [@nontail]
   | Compound block ->
     Located.map block ~f:(stack_ fun _ ->
-      Ident_env.open_scope env;
-      let block = resolve_block block ~env in
-      Ident_env.close_scope env;
-      Ast.Stmt.Compound block)
+      Ident_env.with_scope env ~f:(stack_ fun () ->
+        Ast.Stmt.Compound (resolve_block block ~env))
+      [@nontail])
     [@nontail]
   | While { cond; body; id } ->
     Located.map stmt ~f:(stack_ fun _ ->
@@ -127,19 +133,16 @@ let rec resolve_stmt stmt ~env =
     [@nontail]
   | For { init; cond; post; body; id } ->
     Located.map stmt ~f:(stack_ fun _ ->
-      Ident_env.open_scope env;
-      let init = resolve_for_init init ~env in
-      let for_ =
+      Ident_env.with_scope env ~f:(stack_ fun () ->
+        let init = resolve_for_init init ~env in
         Ast.Stmt.For
           { init
           ; cond = Or_null.map cond ~f:(stack_ fun cond -> resolve_expr cond ~env)
           ; post = Or_null.map post ~f:(stack_ fun post -> resolve_expr post ~env)
           ; body = resolve_stmt body ~env
           ; id
-          }
-      in
-      Ident_env.close_scope env;
-      for_)
+          })
+      [@nontail])
     [@nontail]
   | Case { value; body; id } ->
     Located.map stmt ~f:(stack_ fun _ ->
@@ -173,17 +176,13 @@ and resolve_block_item block_item ~env =
 
 and resolve_block block ~env =
   Located.map block ~f:(stack_ fun body ->
-    let resolved_body = Iarray.map body ~f:(fun item -> resolve_block_item item ~env) in
+    let resolved_body =
+      Iarray.map body ~f:(stack_ fun item -> resolve_block_item item ~env)
+    in
     resolved_body)
   [@nontail]
 
 and resolve_fun_decl fun_decl ~local ~env =
-  let local_ resolve_param param ~fun_decl ~env =
-    match Ident_env.declare_var env ~source_name:param with
-    | `Duplicate ->
-      Error_helpers.raise_at fun_decl [%string "duplicate parameter declaration %{param}"]
-    | `Declared resolved_name -> resolved_name
-  in
   Located.map fun_decl ~f:(stack_ fun { Ast.Fun_decl.name; params; body } ->
     let name =
       match Ident_env.declare_fun env ~source_name:name with
@@ -191,17 +190,19 @@ and resolve_fun_decl fun_decl ~local ~env =
         Error_helpers.raise_at fun_decl [%string "duplicate function declaration %{name}"]
       | `Declared name -> name
     in
-    Ident_env.open_scope env;
-    let params =
-      Iarray.map params ~f:(stack_ fun param -> resolve_param param ~fun_decl ~env)
+    let params, body =
+      Ident_env.with_scope env ~f:(stack_ fun () ->
+        let params =
+          Iarray.map params ~f:(stack_ fun param -> resolve_param param ~fun_decl ~env)
+        in
+        let body =
+          Or_null.map body ~f:(stack_ fun body ->
+            if local
+            then Error_helpers.raise_at fun_decl "local function declaration with body"
+            else resolve_block body ~env)
+        in
+        params, body)
     in
-    let body =
-      Or_null.map body ~f:(stack_ fun body ->
-        if local
-        then Error_helpers.raise_at fun_decl "local function declaration with body"
-        else resolve_block body ~env)
-    in
-    Ident_env.close_scope env;
     { Ast.Fun_decl.name; params; body })
   [@nontail]
 ;;

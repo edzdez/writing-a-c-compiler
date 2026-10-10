@@ -97,7 +97,8 @@ and resolve_block_item block_item ~labels =
 
 and resolve_block block ~labels =
   Located.map block ~f:(stack_ fun block ->
-    Iarray.map block ~f:(fun block_item -> resolve_block_item block_item ~labels))
+    Iarray.map block ~f:(stack_ fun block_item -> resolve_block_item block_item ~labels)
+    [@nontail])
   [@nontail]
 ;;
 

@@ -10,7 +10,7 @@ end
 
 let unary_op = function
   | Tacky.Ir.Unary_op.Negate -> Ir.Unary_op.Neg
-  | Complement -> Ir.Unary_op.Not
+  | Complement -> Not
   | Not as op -> raise_s [%message "nonstandard unary op" (op : Tacky.Ir.Unary_op.t)]
 ;;
 
@@ -28,7 +28,7 @@ let binary_op = function
 
 let operand = function
   | Tacky.Ir.Val.Constant constant -> Ir.Operand.Imm constant
-  | Var var -> Ir.Operand.Pseudo var
+  | Var var -> Pseudo var
 ;;
 
 let arg_regs =
@@ -63,7 +63,8 @@ let fun_call ~name ~args ~dst ~builder =
       Builder.emit builder (Ir.Instr.Push (Reg `Ax)));
   Builder.emit builder (Ir.Instr.Call name);
   let bytes_to_remove = (8 * Iarray.length stack_args) + stack_padding in
-  if bytes_to_remove <> 0 then Builder.emit builder (Ir.Instr.Dealloc_stack bytes_to_remove);
+  if bytes_to_remove <> 0
+  then Builder.emit builder (Ir.Instr.Dealloc_stack bytes_to_remove);
   let dst = operand dst in
   Builder.emit builder (Ir.Instr.Mov { src = Reg `Ax; dst })
 ;;

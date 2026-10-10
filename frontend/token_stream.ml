@@ -26,7 +26,7 @@ let ensure_buffered t ~distance =
   done
 ;;
 
-let peek t ~distance =
+let peek ?(distance = 0) t =
   ensure_buffered t ~distance;
   match distance < Deque.length t.buffer with
   | false -> Deque.peek_back_exn t.buffer

@@ -3,8 +3,9 @@ open! Core
 let fun_def { Ir.Fun_def.name; instrs = input } =
   let stack_slots = String.Table.create () in
   let local_ stack_offset pseudo =
-    Hashtbl.find_or_add stack_slots pseudo ~default:(fun () ->
+    Hashtbl.find_or_add stack_slots pseudo ~default:(stack_ fun () ->
       (Hashtbl.length stack_slots + 1) * 4)
+    [@nontail]
   in
   let local_ operand = function
     | Ir.Operand.Pseudo pseudo -> Ir.Operand.Stack (stack_offset pseudo)
