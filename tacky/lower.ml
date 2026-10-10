@@ -184,7 +184,11 @@ let rec lower_expr expr ~builder =
     Builder.emit builder (Ir.Instr.Copy { dst; src = else_result });
     Builder.emit builder (Ir.Instr.Label end_lbl);
     dst
-  | Function_call _ -> failwith "function calls are not implemented"
+  | Function_call { name; args } ->
+    let args = Iarray.map args ~f:(stack_ fun arg -> lower_expr arg ~builder) in
+    let dst = Builder.fresh_temporary builder in
+    Builder.emit builder (Ir.Instr.Fun_call { name; args; dst });
+    dst
 ;;
 
 let lower_var_decl decl ~builder =
@@ -304,31 +308,26 @@ and lower_block_item block_item ~builder =
   | Ast.Block_item.Decl decl ->
     (match Located.value decl with
      | Ast.Decl.Var_decl var_decl -> lower_var_decl var_decl ~builder
-     | Fun_decl _ -> failwith "function declarations are not implemented")
+     | Fun_decl _ -> ())
   | Stmt stmt -> lower_stmt stmt ~builder
 
 and lower_block block ~builder =
   let block = Located.value block in
   Iarray.iter block ~f:(stack_ fun block_item -> lower_block_item block_item ~builder)
   [@nontail]
-;;
 
-let lower_fun_decl fun_decl ~builder =
+and lower_fun_decl fun_decl ~builder =
   let { Ast.Fun_decl.name; params; body } = Located.value fun_decl in
-  match Iarray.is_empty params, body with
-  | false, _ -> failwith "function parameters are not implemented"
-  | true, Null -> failwith "function declarations without bodies are not implemented"
-  | true, This body ->
+  Or_null.map_to_option body ~f:(stack_ fun body ->
     lower_block body ~builder;
     Builder.emit builder (Ir.Instr.Return (Constant 0));
-    { Ir.Fun_def.name; instrs = Builder.finish builder }
+    { Ir.Fun_def.name; params; instrs = Builder.finish builder })
+  [@nontail]
 ;;
 
 let program prog =
-  let prog = Located.value prog in
-  match Iarray.length prog with
-  | 1 ->
+  Iarray.filter_map (Located.value prog) ~f:(stack_ fun fun_def ->
     let builder = Builder.create () in
-    lower_fun_decl (Iarray.get prog 0) ~builder
-  | _ -> failwith "multiple function definitions are not implemented"
+    lower_fun_decl fun_def ~builder)
+  [@nontail]
 ;;

@@ -39,6 +39,6 @@ end
 
 module Emit = struct
   let program (program : Program.legal Program.t) ~writer =
-    Emit_pass.program (Program.ir program) ~writer
+    Emit_pass.program (Program.ir program) ~symbol_table:(Program.symbols program) ~writer
   ;;
 end

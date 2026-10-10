@@ -40,12 +40,13 @@ module Operand : sig
     type t =
       | Byte
       | Long
+      | Quad
     [@@deriving sexp_of]
   end
 
   type t =
     | Imm of int
-    | Reg of [ `Ax | `Cx | `Dx | `R10 | `R11 ]
+    | Reg of [ `Ax | `Cx | `Dx | `Di | `Si | `R8 | `R9 | `R10 | `R11 ]
     | Pseudo of string
     | Stack of int
   [@@deriving sexp_of]
@@ -83,6 +84,9 @@ module Instr : sig
         }
     | Label of string
     | Alloc_stack of int
+    | Dealloc_stack of int
+    | Push of Operand.t
+    | Call of string
     | Ret
   [@@deriving sexp_of]
 end
@@ -96,5 +100,5 @@ module Fun_def : sig
 end
 
 module Prog : sig
-  type t = Fun_def.t [@@deriving sexp_of]
+  type t = Fun_def.t iarray [@@deriving sexp_of]
 end

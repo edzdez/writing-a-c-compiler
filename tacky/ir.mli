@@ -63,6 +63,11 @@ module Instr : sig
         ; tgt : string
         }
     | Label of string
+    | Fun_call of
+        { name : string
+        ; args : Val.t iarray
+        ; dst : Val.t
+        }
     | Return of Val.t
   [@@deriving sexp_of]
 end
@@ -70,11 +75,12 @@ end
 module Fun_def : sig
   type t =
     { name : string
+    ; params : string iarray
     ; instrs : Instr.t iarray
     }
   [@@deriving sexp_of]
 end
 
 module Prog : sig
-  type t = Fun_def.t [@@deriving sexp_of]
+  type t = Fun_def.t iarray [@@deriving sexp_of]
 end

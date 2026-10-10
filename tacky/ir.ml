@@ -63,6 +63,11 @@ module Instr = struct
         ; tgt : string
         }
     | Label of string
+    | Fun_call of
+        { name : string
+        ; args : Val.t iarray
+        ; dst : Val.t
+        }
     | Return of Val.t
   [@@deriving sexp_of]
 end
@@ -70,11 +75,12 @@ end
 module Fun_def = struct
   type t =
     { name : string
+    ; params : string iarray
     ; instrs : Instr.t iarray
     }
   [@@deriving sexp_of]
 end
 
 module Prog = struct
-  type t = Fun_def.t [@@deriving sexp_of]
+  type t = Fun_def.t iarray [@@deriving sexp_of]
 end

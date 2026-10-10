@@ -1,6 +1,6 @@
 open! Core
 
-let program { Ir.Fun_def.name; instrs = input } =
+let fun_def { Ir.Fun_def.name; instrs = input } =
   let stack_slots = String.Table.create () in
   let local_ stack_offset pseudo =
     Hashtbl.find_or_add stack_slots pseudo ~default:(fun () ->
@@ -21,9 +21,15 @@ let program { Ir.Fun_def.name; instrs = input } =
       | Cmp { left; right } -> Cmp { left = operand left; right = operand right }
       | Idiv op -> Idiv (operand op)
       | Set_cc { cc; dst } -> Set_cc { cc; dst = operand dst }
-      | Cdq | Jmp _ | Jmp_cc _ | Label _ | Alloc_stack _ | Ret -> instr
+      | Push op -> Push (operand op)
+      | Cdq | Jmp _ | Jmp_cc _ | Label _ | Alloc_stack _ | Dealloc_stack _ | Call _ | Ret
+        -> instr
     in
     Vec.push_back instrs instr);
-  Vec.unsafe_set instrs 0 (Ir.Instr.Alloc_stack (Hashtbl.length stack_slots * 4));
+  let unaligned_stack_space = Hashtbl.length stack_slots * 4 in
+  let stack_space = (unaligned_stack_space + 15) / 16 * 16 in
+  Vec.unsafe_set instrs 0 (Ir.Instr.Alloc_stack stack_space);
   { Ir.Fun_def.name; instrs = Vec.to_iarray instrs }
 ;;
+
+let program program = Iarray.map program ~f:(stack_ fun f -> fun_def f) [@nontail]

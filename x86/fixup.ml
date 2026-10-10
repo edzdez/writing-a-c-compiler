@@ -1,6 +1,6 @@
 open! Core
 
-let program { Ir.Fun_def.name; instrs = input } =
+let fun_def { Ir.Fun_def.name; instrs = input } =
   let instrs = Vec.create ~initial_capacity:(Iarray.length input) () in
   Iarray.iter input ~f:(stack_ fun instr ->
     match instr with
@@ -33,3 +33,5 @@ let program { Ir.Fun_def.name; instrs = input } =
     | instr -> Vec.push_back instrs instr);
   { Ir.Fun_def.name; instrs = Vec.to_iarray instrs }
 ;;
+
+let program program = Iarray.map program ~f:(stack_ fun f -> fun_def f) [@nontail]
