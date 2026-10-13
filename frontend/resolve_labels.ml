@@ -103,17 +103,26 @@ and resolve_block block ~labels =
 ;;
 
 let resolve_fun_decl fun_decl =
-  Located.map fun_decl ~f:(stack_ fun { Ast.Fun_decl.name; params; body } ->
-    let body =
-      Or_null.map body ~f:(stack_ fun body ->
-        let labels = gather_labels body in
-        resolve_block body ~labels)
-    in
-    { Ast.Fun_decl.name; params; body })
+  Located.map
+    fun_decl
+    ~f:(stack_ fun { Ast.Fun_decl.name; params; body; ret_type; storage } ->
+      let body =
+        Or_null.map body ~f:(stack_ fun body ->
+          let labels = gather_labels body in
+          resolve_block body ~labels)
+      in
+      { Ast.Fun_decl.name; params; body; ret_type; storage })
+  [@nontail]
+;;
+
+let resolve_decl decl =
+  Located.map decl ~f:(stack_ fun decl ->
+    match decl with
+    | Ast.Decl.Var_decl _ -> decl
+    | Fun_decl decl -> Ast.Decl.Fun_decl (resolve_fun_decl decl))
   [@nontail]
 ;;
 
 let program (prog : Ast.Prog.t) =
-  Located.map prog ~f:(stack_ fun fun_decls -> Iarray.map fun_decls ~f:resolve_fun_decl)
-  [@nontail]
+  Located.map prog ~f:(stack_ fun decls -> Iarray.map decls ~f:resolve_decl) [@nontail]
 ;;

@@ -202,7 +202,7 @@ let lower_var_decl decl ~builder =
 ;;
 
 let lower_for_init for_init ~builder =
-  match Located.value for_init with
+  match for_init with
   | Ast.For_init.Decl decl -> lower_var_decl decl ~builder
   | Expr expr ->
     Or_null.iter expr ~f:(stack_ fun expr -> ignore (lower_expr expr ~builder)) [@nontail]
@@ -325,9 +325,15 @@ and lower_fun_decl fun_decl ~builder =
   [@nontail]
 ;;
 
+let lower_decl decl ~builder =
+  match Located.value decl with
+  | Ast.Decl.Var_decl _var_decl -> failwith "todo"
+  | Fun_decl fun_decl -> lower_fun_decl fun_decl ~builder
+;;
+
 let program prog =
-  Iarray.filter_map (Located.value prog) ~f:(stack_ fun fun_def ->
+  Iarray.filter_map (Located.value prog) ~f:(stack_ fun decl ->
     let builder = Builder.create () in
-    lower_fun_decl fun_def ~builder)
+    lower_decl decl ~builder)
   [@nontail]
 ;;

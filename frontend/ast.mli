@@ -77,20 +77,27 @@ module Expr : sig
   val describe : t -> string
 end
 
+module Storage_class : sig
+  type t =
+    | Static
+    | Extern
+  [@@deriving equal, sexp_of]
+end
+
 module Var_decl : sig
   type t = node Source.Located.t
 
   and node =
     { name : string
     ; init : Expr.t or_null
+    ; type_ : Semantics.C_type.t
+    ; storage : Storage_class.t or_null
     }
   [@@deriving sexp_of]
 end
 
 module For_init : sig
-  type t = node Source.Located.t
-
-  and node =
+  type t =
     | Decl of Var_decl.t
     | Expr of Expr.t or_null
   [@@deriving sexp_of]
@@ -121,6 +128,8 @@ module rec Fun_decl : sig
     { name : string
     ; params : string iarray
     ; body : Block.t or_null
+    ; ret_type : Semantics.C_type.t
+    ; storage : Storage_class.t or_null
     }
   [@@deriving sexp_of]
 end
@@ -205,5 +214,5 @@ end
 
 module Prog : sig
   type t = node Source.Located.t
-  and node = Fun_decl.t iarray [@@deriving sexp_of]
+  and node = Decl.t iarray [@@deriving sexp_of]
 end

@@ -58,5 +58,7 @@ type t =
   | Case
   | Default
   | Comma
+  | Static
+  | Extern
   | Eof
 [@@deriving compare, equal, sexp]

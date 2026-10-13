@@ -26,10 +26,17 @@ let validate_unary_lvalue op expr =
 ;;
 
 let resolve_param param ~fun_decl ~env =
-  match Ident_env.declare_var env ~source_name:param with
+  match Ident_env.declare_local_var env ~source_name:param ~has_linkage:false with
   | `Duplicate ->
     Error_helpers.raise_at fun_decl [%string "duplicate parameter declaration %{param}"]
   | `Declared resolved_name -> resolved_name
+;;
+
+let resolve_fun_name name ~fun_decl ~env =
+  match Ident_env.declare_fun env ~source_name:name with
+  | `Duplicate ->
+    Error_helpers.raise_at fun_decl [%string "duplicate function declaration %{name}"]
+  | `Declared name -> name
 ;;
 
 let rec resolve_expr expr ~env =
@@ -78,22 +85,51 @@ let rec resolve_expr expr ~env =
   | Const _ -> expr
 ;;
 
-let resolve_var_decl decl ~env =
-  let { Ast.Var_decl.name = source_name; init } = Located.value decl in
-  match Ident_env.declare_var env ~source_name with
+let resolve_local_var_decl decl ~env =
+  let { Ast.Var_decl.name = source_name; init; type_; storage } = Located.value decl in
+  let has_linkage =
+    match storage with
+    | This Extern -> true
+    | This Static | Null -> false
+  in
+  match Ident_env.declare_local_var env ~source_name ~has_linkage with
   | `Duplicate ->
-    Error_helpers.raise_at decl [%string "duplicate variable declaration %{source_name}"]
+    Error_helpers.raise_at
+      decl
+      [%string "conflicting local declarations for %{source_name}"]
   | `Declared resolved_name ->
     let init = Or_null.map init ~f:(resolve_expr ~env) in
-    Located.map decl ~f:(stack_ fun _ -> { Ast.Var_decl.name = resolved_name; init })
+    Located.map decl ~f:(stack_ fun _ ->
+      { Ast.Var_decl.name = resolved_name; init; type_; storage })
     [@nontail]
 ;;
 
+let resolve_local_fun_decl fun_decl ~env =
+  Located.map
+    fun_decl
+    ~f:(stack_ fun { Ast.Fun_decl.name; params; body; ret_type; storage } ->
+      (match storage with
+       | This Static ->
+         Error_helpers.raise_at
+           fun_decl
+           "block-scope function declaration cannot be static"
+       | This Extern | Null -> ());
+      let name = resolve_fun_name name ~fun_decl ~env in
+      let params =
+        Ident_env.with_scope env ~f:(stack_ fun () ->
+          Iarray.map params ~f:(stack_ fun param -> resolve_param param ~fun_decl ~env)
+          [@nontail])
+      in
+      if Or_null.is_this body
+      then Error_helpers.raise_at fun_decl "block-scope function declaration with body";
+      { Ast.Fun_decl.name; params; body; ret_type; storage })
+  [@nontail]
+;;
+
 let resolve_for_init for_init ~env =
-  Located.map for_init ~f:(stack_ function
-    | Ast.For_init.Decl decl -> Ast.For_init.Decl (resolve_var_decl decl ~env)
-    | Expr expr -> Expr (Or_null.map expr ~f:(stack_ fun expr -> resolve_expr expr ~env)))
-    [@nontail]
+  match for_init with
+  | Ast.For_init.Decl decl -> Ast.For_init.Decl (resolve_local_var_decl decl ~env)
+  | Expr expr -> Expr (Or_null.map expr ~f:(stack_ fun expr -> resolve_expr expr ~env))
 ;;
 
 let rec resolve_stmt stmt ~env =
@@ -166,11 +202,11 @@ and resolve_block_item block_item ~env =
         (match Located.value decl with
          | Ast.Decl.Var_decl var_decl ->
            Located.map decl ~f:(stack_ fun _ ->
-             Ast.Decl.Var_decl (resolve_var_decl var_decl ~env))
+             Ast.Decl.Var_decl (resolve_local_var_decl var_decl ~env))
            [@nontail]
          | Fun_decl fun_decl ->
            Located.map decl ~f:(stack_ fun _ ->
-             Ast.Decl.Fun_decl (resolve_fun_decl fun_decl ~local:true ~env)))
+             Ast.Decl.Fun_decl (resolve_local_fun_decl fun_decl ~env)))
     | Stmt stmt -> Ast.Block_item.Stmt (resolve_stmt stmt ~env))
     [@nontail]
 
@@ -181,37 +217,42 @@ and resolve_block block ~env =
     in
     resolved_body)
   [@nontail]
+;;
 
-and resolve_fun_decl fun_decl ~local ~env =
-  Located.map fun_decl ~f:(stack_ fun { Ast.Fun_decl.name; params; body } ->
-    let name =
-      match Ident_env.declare_fun env ~source_name:name with
-      | `Duplicate ->
-        Error_helpers.raise_at fun_decl [%string "duplicate function declaration %{name}"]
-      | `Declared name -> name
-    in
-    let params, body =
-      Ident_env.with_scope env ~f:(stack_ fun () ->
-        let params =
-          Iarray.map params ~f:(stack_ fun param -> resolve_param param ~fun_decl ~env)
-        in
-        let body =
-          Or_null.map body ~f:(stack_ fun body ->
-            if local
-            then Error_helpers.raise_at fun_decl "local function declaration with body"
-            else resolve_block body ~env)
-        in
-        params, body)
-    in
-    { Ast.Fun_decl.name; params; body })
+let resolve_file_scope_var_decl decl ~env =
+  let { Ast.Var_decl.name; init; type_; storage } = Located.value decl in
+  Ident_env.declare_file_scope_var env ~source_name:name;
+  Located.map decl ~f:(stack_ fun _ -> { Ast.Var_decl.name; init; type_; storage })
   [@nontail]
+;;
+
+let resolve_file_scope_fun_decl fun_decl ~env =
+  Located.map
+    fun_decl
+    ~f:(stack_ fun { Ast.Fun_decl.name; params; body; ret_type; storage } ->
+      let name = resolve_fun_name name ~fun_decl ~env in
+      let params, body =
+        Ident_env.with_scope env ~f:(stack_ fun () ->
+          let params =
+            Iarray.map params ~f:(stack_ fun param -> resolve_param param ~fun_decl ~env)
+          in
+          let body = Or_null.map body ~f:(stack_ fun body -> resolve_block body ~env) in
+          params, body)
+      in
+      { Ast.Fun_decl.name; params; body; ret_type; storage })
+  [@nontail]
+;;
+
+let resolve_decl decl ~env =
+  Located.map decl ~f:(stack_ function
+    | Ast.Decl.Var_decl decl -> Ast.Decl.Var_decl (resolve_file_scope_var_decl decl ~env)
+    | Fun_decl decl -> Fun_decl (resolve_file_scope_fun_decl decl ~env))
+    [@nontail]
 ;;
 
 let program (prog : Ast.Prog.t) =
   let env = Ident_env.create () in
-  Located.map prog ~f:(stack_ fun fun_decls ->
-    Iarray.map fun_decls ~f:(stack_ fun fun_decl ->
-      resolve_fun_decl fun_decl ~local:false ~env)
-    [@nontail])
+  Located.map prog ~f:(stack_ fun decls ->
+    Iarray.map decls ~f:(stack_ fun decl -> resolve_decl decl ~env) [@nontail])
   [@nontail]
 ;;

@@ -23,6 +23,8 @@ let ident_or_keyword lexbuf =
   | "switch" -> Switch
   | "case" -> Case
   | "default" -> Default
+  | "static" -> Static
+  | "extern" -> Extern
   | ident -> Ident ident
 
 let constant lexbuf =
