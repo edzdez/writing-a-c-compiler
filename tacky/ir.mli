@@ -75,12 +75,29 @@ end
 module Fun_def : sig
   type t =
     { name : string
+    ; global : bool
     ; params : string iarray
     ; instrs : Instr.t iarray
     }
   [@@deriving sexp_of]
 end
 
+module Static_var : sig
+  type t =
+    { name : string
+    ; global : bool
+    ; init : int
+    }
+  [@@deriving sexp_of]
+end
+
+module Top_level : sig
+  type t =
+    | Fun of Fun_def.t
+    | Static_var of Static_var.t
+  [@@deriving sexp_of]
+end
+
 module Prog : sig
-  type t = Fun_def.t iarray [@@deriving sexp_of]
+  type t = Top_level.t iarray [@@deriving sexp_of]
 end

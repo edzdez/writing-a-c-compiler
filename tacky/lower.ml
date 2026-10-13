@@ -1,6 +1,8 @@
 open! Core
 module Ast = Frontend.Ast
 module Located = Source.Located
+module Symbol = Semantics.Symbol
+module Symbol_table = Semantics.Symbol_table
 
 module Builder = struct
   type t =
@@ -192,13 +194,16 @@ let rec lower_expr expr ~builder =
 ;;
 
 let lower_var_decl decl ~builder =
-  let { Ast.Var_decl.name; init } = Located.value decl in
-  match init with
-  | Null -> ()
-  | This expr ->
-    let src = lower_expr expr ~builder in
-    let dst = Ir.Val.Var name in
-    Builder.emit builder (Ir.Instr.Copy { src; dst })
+  let { Ast.Var_decl.name; init; storage } = Located.value decl in
+  match storage with
+  | This (Extern | Static) -> ()
+  | _ ->
+    (match init with
+     | Null -> ()
+     | This expr ->
+       let src = lower_expr expr ~builder in
+       let dst = Ir.Val.Var name in
+       Builder.emit builder (Ir.Instr.Copy { src; dst }))
 ;;
 
 let lower_for_init for_init ~builder =
@@ -316,24 +321,45 @@ and lower_block block ~builder =
   Iarray.iter block ~f:(stack_ fun block_item -> lower_block_item block_item ~builder)
   [@nontail]
 
-and lower_fun_decl fun_decl ~builder =
-  let { Ast.Fun_decl.name; params; body } = Located.value fun_decl in
-  Or_null.map_to_option body ~f:(stack_ fun body ->
+and lower_fun_decl fun_decl ~builder ~symbols =
+  let { Ast.Fun_decl.name; params; body; _ } = Located.value fun_decl in
+  let global =
+    match Symbol_table.find symbols name with
+    | This { Symbol.attrs = Fun { global; defined = _ }; type_ = _ } -> global
+    | This symbol -> raise_s [%message "not a function" name (symbol : Symbol.t)]
+    | Null -> raise_s [%message "not in symbol table" name]
+  in
+  Or_null.map body ~f:(stack_ fun body ->
     lower_block body ~builder;
     Builder.emit builder (Ir.Instr.Return (Constant 0));
-    { Ir.Fun_def.name; params; instrs = Builder.finish builder })
+    { Ir.Fun_def.name; global; params; instrs = Builder.finish builder })
   [@nontail]
 ;;
 
-let lower_decl decl ~builder =
+let lower_decl decl ~builder ~symbols =
   match Located.value decl with
-  | Ast.Decl.Var_decl _var_decl -> failwith "todo"
-  | Fun_decl fun_decl -> lower_fun_decl fun_decl ~builder
+  | Ast.Decl.Var_decl _ -> Null
+  | Fun_decl fun_decl ->
+    Or_null.map (lower_fun_decl fun_decl ~builder ~symbols) ~f:(stack_ fun t ->
+      Ir.Top_level.Fun t)
+    [@nontail]
 ;;
 
-let program prog =
-  Iarray.filter_map (Located.value prog) ~f:(stack_ fun decl ->
+let program prog ~symbols =
+  let prog = Located.value prog in
+  let instrs = Vec.create () ~initial_capacity:(Iarray.length prog) in
+  Iarray.iter prog ~f:(stack_ fun decl ->
     let builder = Builder.create () in
-    lower_decl decl ~builder)
-  [@nontail]
+    match lower_decl decl ~builder ~symbols with
+    | This top_level -> Vec.push_back instrs top_level
+    | Null -> ());
+  Symbol_table.iter symbols ~f:(fun ~name ~symbol ->
+    match symbol.attrs with
+    | Static { init; global } ->
+      (match init with
+       | Initial i -> Vec.push_back instrs (Static_var { name; global; init = i })
+       | Tentative -> Vec.push_back instrs (Static_var { name; global; init = 0 })
+       | No_initializer -> ())
+    | _ -> ());
+  Vec.to_iarray instrs
 ;;

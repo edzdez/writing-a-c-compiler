@@ -14,7 +14,7 @@ let binary_op = function
   | And -> "andl"
   | Or -> "orl "
   | Xor -> "xorl"
-  | Shl -> "shll"
+  | Sal -> "sall"
   | Sar -> "sarl"
 ;;
 
@@ -59,6 +59,7 @@ let operand ?(size = Ir.Operand.Size.Long) operand =
   | Reg `R11, Long -> "%r11d"
   | Reg `R11, Byte -> "%r11b"
   | Stack offset, _ -> [%string "%{-offset#Int}(%rbp)"]
+  | Data data, _ -> [%string "%{data}(%rip)"]
   | Pseudo _, _ -> failwith "pseudo registers should not be emitted."
 ;;
 
@@ -78,7 +79,7 @@ let instr instr ~function_name ~symbol_table ~writer =
     Out_channel.output_line writer [%string "\tmovl\t%{operand src}, %{operand dst}"]
   | Unary { op; dst } ->
     Out_channel.output_line writer [%string "\t%{unary_op op}\t%{operand dst}"]
-  | Binary { op = (Shl | Sar) as op; src; dst } ->
+  | Binary { op = (Sal | Sar) as op; src; dst } ->
     Out_channel.output_line
       writer
       [%string "\t%{binary_op op}\t%{operand src ~size:Byte}, %{operand dst}"]
@@ -115,15 +116,35 @@ let instr instr ~function_name ~symbol_table ~writer =
     Out_channel.output_line writer "\tret"
 ;;
 
-let fun_def { Ir.Fun_def.name; instrs } ~symbol_table ~writer =
-  Out_channel.output_line writer [%string "\t.globl %{name}"];
+let fun_def { Ir.Fun_def.name; global; instrs } ~symbol_table ~writer =
+  if global then Out_channel.output_line writer [%string "\t.globl %{name}"];
+  Out_channel.output_line writer "\t.text";
   Out_channel.output_line writer [%string "%{name}:"];
   Out_channel.output_line writer "\tpushq\t%rbp";
   Out_channel.output_line writer "\tmovq\t%rsp, %rbp";
   Iarray.iter instrs ~f:(instr ~function_name:name ~symbol_table ~writer)
 ;;
 
+let static_var { Ir.Static_var.name; global; init } ~symbol_table ~writer =
+  if global then Out_channel.output_line writer [%string "\t.globl %{name}"];
+  match init with
+  | 0 ->
+    Out_channel.output_line writer "\t.bss";
+    Out_channel.output_line writer "\t.align 4";
+    Out_channel.output_line writer [%string "%{name}:"];
+    Out_channel.output_line writer "\t.zero 4"
+  | n ->
+    Out_channel.output_line writer "\t.data";
+    Out_channel.output_line writer "\t.align 4";
+    Out_channel.output_line writer [%string "%{name}:"];
+    Out_channel.output_line writer [%string "\t.long %{n#Int}"]
+;;
+
 let program program ~symbol_table ~writer =
-  Iarray.iter program ~f:(stack_ fun f -> fun_def f ~symbol_table ~writer);
+  Iarray.iter program ~f:(stack_ fun top_level ->
+    (match top_level with
+     | Ir.Top_level.Fun f -> fun_def f ~symbol_table ~writer
+     | Static_var var -> static_var var ~symbol_table ~writer);
+    Out_channel.output_line writer "");
   Out_channel.output_line writer {|.section .note.GNU-stack,"",@progbits|}
 ;;

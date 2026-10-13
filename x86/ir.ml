@@ -15,7 +15,7 @@ module Binary_op = struct
     | And
     | Or
     | Xor
-    | Shl
+    | Sal
     | Sar
   [@@deriving sexp_of]
 end
@@ -45,6 +45,7 @@ module Operand = struct
     | Reg of [ `Ax | `Cx | `Dx | `Di | `Si | `R8 | `R9 | `R10 | `R11 ]
     | Pseudo of string
     | Stack of int
+    | Data of string
   [@@deriving sexp_of]
 end
 
@@ -90,11 +91,28 @@ end
 module Fun_def = struct
   type t =
     { name : string
+    ; global : bool
     ; instrs : Instr.t iarray
     }
   [@@deriving sexp_of]
 end
 
+module Static_var = struct
+  type t =
+    { name : string
+    ; global : bool
+    ; init : int
+    }
+  [@@deriving sexp_of]
+end
+
+module Top_level = struct
+  type t =
+    | Fun of Fun_def.t
+    | Static_var of Static_var.t
+  [@@deriving sexp_of]
+end
+
 module Prog = struct
-  type t = Fun_def.t iarray [@@deriving sexp_of]
+  type t = Top_level.t iarray [@@deriving sexp_of]
 end

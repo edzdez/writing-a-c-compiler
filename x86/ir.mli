@@ -19,7 +19,7 @@ module Binary_op : sig
     | And
     | Or
     | Xor
-    | Shl
+    | Sal
     | Sar
   [@@deriving sexp_of]
 end
@@ -49,6 +49,7 @@ module Operand : sig
     | Reg of [ `Ax | `Cx | `Dx | `Di | `Si | `R8 | `R9 | `R10 | `R11 ]
     | Pseudo of string
     | Stack of int
+    | Data of string
   [@@deriving sexp_of]
 end
 
@@ -94,11 +95,28 @@ end
 module Fun_def : sig
   type t =
     { name : string
+    ; global : bool
     ; instrs : Instr.t iarray
     }
   [@@deriving sexp_of]
 end
 
+module Static_var : sig
+  type t =
+    { name : string
+    ; global : bool
+    ; init : int
+    }
+  [@@deriving sexp_of]
+end
+
+module Top_level : sig
+  type t =
+    | Fun of Fun_def.t
+    | Static_var of Static_var.t
+  [@@deriving sexp_of]
+end
+
 module Prog : sig
-  type t = Fun_def.t iarray [@@deriving sexp_of]
+  type t = Top_level.t iarray [@@deriving sexp_of]
 end

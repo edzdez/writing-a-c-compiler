@@ -1,14 +1,22 @@
 open! Core
+module Symbol_table = Semantics.Symbol_table
 
-let fun_def { Ir.Fun_def.name; instrs = input } =
+let rewrite_pseudo pseudo ~symbols ~stack_slots =
+  match Hashtbl.find_or_null stack_slots pseudo with
+  | This slot -> Ir.Operand.Stack slot
+  | Null ->
+    (match Symbol_table.find symbols pseudo with
+     | This { type_ = _; attrs = Static _ } -> Data pseudo
+     | _ ->
+       let slot = (Hashtbl.length stack_slots + 1) * 4 in
+       Hashtbl.add_exn stack_slots ~key:pseudo ~data:slot;
+       Stack slot)
+;;
+
+let fun_def { Ir.Fun_def.name; global; instrs = input } ~symbols =
   let stack_slots = String.Table.create () in
-  let local_ stack_offset pseudo =
-    Hashtbl.find_or_add stack_slots pseudo ~default:(stack_ fun () ->
-      (Hashtbl.length stack_slots + 1) * 4)
-    [@nontail]
-  in
   let local_ operand = function
-    | Ir.Operand.Pseudo pseudo -> Ir.Operand.Stack (stack_offset pseudo)
+    | Ir.Operand.Pseudo pseudo -> rewrite_pseudo pseudo ~symbols ~stack_slots
     | operand -> operand
   in
   let instrs = Vec.create ~initial_capacity:(Iarray.length input + 1) () in
@@ -30,7 +38,12 @@ let fun_def { Ir.Fun_def.name; instrs = input } =
   let unaligned_stack_space = Hashtbl.length stack_slots * 4 in
   let stack_space = (unaligned_stack_space + 15) / 16 * 16 in
   Vec.unsafe_set instrs 0 (Ir.Instr.Alloc_stack stack_space);
-  { Ir.Fun_def.name; instrs = Vec.to_iarray instrs }
+  { Ir.Fun_def.name; global; instrs = Vec.to_iarray instrs }
 ;;
 
-let program program = Iarray.map program ~f:(stack_ fun f -> fun_def f) [@nontail]
+let program program ~symbols =
+  Iarray.map program ~f:(stack_ function
+    | Ir.Top_level.Fun f -> Ir.Top_level.Fun (fun_def f ~symbols)
+    | top_level -> top_level)
+    [@nontail]
+;;

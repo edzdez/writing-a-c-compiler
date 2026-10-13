@@ -21,7 +21,7 @@ let binary_op = function
   | Bit_and -> And
   | Bit_or -> Or
   | Xor -> Xor
-  | L_shift -> Shl
+  | L_shift -> Sal
   | R_shift -> Sar
   | op -> raise_s [%message "unsupported binary op" (op : Tacky.Ir.Binary_op.t)]
 ;;
@@ -126,7 +126,7 @@ let instr instr ~builder =
     Builder.emit builder Ir.Instr.Ret
 ;;
 
-let fun_def { Tacky.Ir.Fun_def.name; params; instrs = body } =
+let fun_def { Tacky.Ir.Fun_def.name; global; params; instrs = body } =
   let builder = Builder.create () in
   Iarray.iteri params ~f:(stack_ fun i param ->
     let src =
@@ -136,7 +136,16 @@ let fun_def { Tacky.Ir.Fun_def.name; params; instrs = body } =
     in
     Builder.emit builder (Ir.Instr.Mov { src; dst = Pseudo param }));
   Iarray.iter body ~f:(instr ~builder);
-  { Ir.Fun_def.name; instrs = Builder.finish builder }
+  { Ir.Fun_def.name; global; instrs = Builder.finish builder }
 ;;
 
-let program prog = Iarray.map prog ~f:fun_def
+let static_var { Tacky.Ir.Static_var.name; global; init } =
+  { Ir.Static_var.name; global; init }
+;;
+
+let top_level = function
+  | Tacky.Ir.Top_level.Fun fun_decl -> Ir.Top_level.Fun (fun_def fun_decl)
+  | Static_var var -> Static_var (static_var var)
+;;
+
+let program prog = Iarray.map prog ~f:top_level

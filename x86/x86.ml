@@ -23,7 +23,10 @@ end
 
 module Stack_layout = struct
   let program (program : Program.selected Program.t) : Program.stack_allocated Program.t =
-    Semantics.Compilation_unit.map_program program ~f:Stack_layout_pass.program
+    let symbols = Program.symbols program in
+    Semantics.Compilation_unit.map_program program ~f:(stack_ fun program ->
+      Stack_layout_pass.program program ~symbols)
+    [@nontail]
   ;;
 end
 
